@@ -300,6 +300,25 @@ const EMAILJS_TEMPLATE_ID = 'TU_TEMPLATE_ID';
 const NOTIFY_EMAIL = 'hparaguay@tandem.pe';
 // ─── SERVIDOR EN RENDER (backend real: sube a SharePoint y manda el correo con adjuntos) ──
 const BACKEND_URL = 'https://facturacion-servidor-1.onrender.com/solicitud';
+const BACKEND_BASE = 'https://facturacion-servidor-1.onrender.com';
+async function fetchSolicitudesFromBackend(soloMias){
+  try{
+    const r = await fetch(`${BACKEND_BASE}/solicitudes`);
+    if(!r.ok) return {ok:false, recs:[], reason:`El servidor respondió ${r.status}`};
+    const rows = await r.json();
+    let recs = rows.map(row=>({
+      id: row.sol_id, spSolId: row.sol_id, fecha: row.fecha_solicitud,
+      solicitante: row.solicitante, idCliente: row.id_cliente, nombreCliente: row.cliente,
+      empresa: row.empresa, estado: row.estado || 'Pendiente', notas: row.notas,
+      documentos: (row.documentos||'').split(',').map(d=>d.trim()).filter(Boolean),
+      tipoDoc: row.tipo_doc, sociedad: row.sociedad
+    }));
+    if(soloMias) recs = recs.filter(r=>r.solicitante===user.nombre);
+    return {ok:true, recs};
+  }catch(e){
+    return {ok:false, recs:[], reason:'No se pudo contactar al servidor: '+e.message};
+  }
+}
 async function sendToBackend(record){
   try{
     const archivos = Object.entries(st.docs)
@@ -327,6 +346,10 @@ async function sendToBackend(record){
     if(!r.ok){
       const t = await r.text().catch(()=> '');
       return {ok:false, reason:`El servidor respondió con error ${r.status}. ${t.slice(0,150)}`};
+    }
+    const j = await r.json().catch(()=>({}));
+    if(j.aviso){
+      return {ok:true, warn: j.aviso};
     }
     return {ok:true};
   }catch(e){
@@ -725,13 +748,12 @@ async function submit(){
         NombreCliente:cr?cr[1]:'',Empresa:cr?cr[3]:'',Estado:'Pendiente',Notas:st.notas,
         TipoDocumento:st.tipoDoc,Sociedad:st.sociedad,
         Documentos:req.map(d=>d.key).join(', '),FechaSolicitud:new Date().toISOString()});
-    } else warn='SharePoint no disponible. Solicitud guardada localmente.';
-  }catch(e){warn='No se pudo guardar en SharePoint. Registrado localmente.';console.error(e);}
-  await saveLocal(id,record);
+    }
+  }catch(e){console.warn('SharePoint no disponible, se sigue solo con el servidor', e);}
   btn.textContent='Enviando notificación…';
   const backend = await sendToBackend(record);
   if(backend.ok){
-    warn = warn ? warn : '';
+    warn = backend.warn ? (warn ? warn+' · '+backend.warn : backend.warn) : warn;
   }else{
     const mail = await notifyByEmail(record);
     const combinedReason = 'No se pudo usar el servidor principal: '+backend.reason + (mail.ok ? ' (aviso enviado por la vía de respaldo).' : ' · Respaldo también falló: '+mail.reason);
@@ -773,12 +795,8 @@ function resetForm(){st={step:1,idCliente:'',notas:'',docs:{},tipoDoc:'',socieda
 async function renderHist(){
   const el=document.getElementById('viewHist');if(!el)return;
   el.innerHTML=`<div class="card"><p style="color:var(--muted);">Cargando…</p></div>`;
-  let idx=[];
-  try{const r=await window.storage.get('sol:index',true);idx=r?JSON.parse(r.value):[];}catch(e){idx=[];}
-  const recs=[];
-  for(const id of idx){
-    try{const r=await window.storage.get(`sol:${id}`,true);if(r){const rec=JSON.parse(r.value);if(rec.solicitante===user.nombre)recs.push(rec);}}catch(e){}
-  }
+  const {ok,recs,reason} = await fetchSolicitudesFromBackend(true);
+  if(!ok){el.innerHTML=`<div class="card" style="text-align:center;padding:50px;color:var(--muted);">No se pudo cargar tu historial. ${esc(reason||'')}</div>`;return;}
   if(!recs.length){el.innerHTML=`<div class="card" style="text-align:center;padding:50px;color:var(--muted);">No tienes solicitudes registradas aún.</div>`;return;}
   window.__histRecs=recs;
   el.innerHTML=`<div class="card">
@@ -787,12 +805,12 @@ async function renderHist(){
       <thead><tr><th>Código</th><th>Fecha</th><th>Tipo</th><th>Sociedad</th><th>Cliente</th><th>Empresa</th><th>Docs</th><th>Estado</th></tr></thead>
       <tbody>${recs.map(r=>`<tr>
         <td style="font-family:var(--mono);font-size:11px;">${esc(r.id)}</td>
-        <td style="white-space:nowrap;">${new Date(r.fecha).toLocaleString('es-PE',{dateStyle:'short',timeStyle:'short'})}</td>
+        <td style="white-space:nowrap;">${r.fecha?new Date(r.fecha).toLocaleString('es-PE',{dateStyle:'short',timeStyle:'short'}):'—'}</td>
         <td><span class="pill" style="background:var(--verde-cl);color:var(--negro);">${esc(r.tipoDoc||'—')}</span></td>
         <td style="font-size:12px;">${esc(r.sociedad||'—')}</td>
         <td>${esc(r.nombreCliente)}<br><span style="color:var(--muted);font-family:var(--mono);font-size:10px;">${esc(r.idCliente)}</span></td>
         <td>${esc(r.empresa)}</td>
-        <td><details><summary>${(r.documentos||[]).length} docs</summary>${(r.documentos||[]).map(d=>`<span class="dl-link" onclick="dlDoc('${r.id}','${d}')">⬇ ${esc(d)}</span>`).join('')}</details></td>
+        <td><span style="font-size:11px;color:var(--muted);">${(r.documentos||[]).length} docs — ver adjuntos en el correo enviado</span></td>
         <td><span class="pill ${r.estado==='Pendiente'?'pill-pend':r.estado==='En proceso'?'pill-proc':'pill-fact'}">${esc(r.estado)}</span></td>
       </tr>`).join('')}</tbody>
     </table></div>
@@ -803,21 +821,8 @@ async function renderHist(){
 async function renderAdmin(){
   const el=document.getElementById('viewAdmin');if(!el)return;
   el.innerHTML=`<div class="card"><p style="color:var(--muted);">Cargando todas las solicitudes…</p></div>`;
-  let recs=[];
-  if(spStatus==='ok'){
-    try{
-      const items=await spGet(`${SP_API}('Solicitudes')/items?$select=Id,Title,Solicitante,IDCliente,NombreCliente,Empresa,Estado,Notas,Documentos,FechaSolicitud&$orderby=FechaSolicitud desc&$top=500`);
-      recs=items.map(r=>({id:r.Title,fecha:r.FechaSolicitud,solicitante:r.Solicitante,
-        idCliente:r.IDCliente,nombreCliente:r.NombreCliente,empresa:r.Empresa,
-        estado:r.Estado||'Pendiente',notas:r.Notas,
-        documentos:(r.Documentos||'').split(',').map(d=>d.trim()).filter(Boolean),spId:r.Id}));
-    }catch(e){console.warn('SP admin load failed',e);}
-  }
-  let idx=[];
-  try{const r=await window.storage.get('sol:index',true);idx=r?JSON.parse(r.value):[];}catch(e){}
-  for(const id of idx){
-    try{const r=await window.storage.get(`sol:${id}`,true);if(r){const rec=JSON.parse(r.value);if(!recs.find(x=>x.id===rec.id))recs.push(rec);}}catch(e){}
-  }
+  const {ok,recs,reason} = await fetchSolicitudesFromBackend(false);
+  if(!ok){el.innerHTML=`<div class="card" style="text-align:center;padding:50px;color:var(--muted);">No se pudo cargar el panel. ${esc(reason||'')}</div>`;return;}
   window.__adminRecs=recs;
   renderAdminTable(recs,'','','');
 }
@@ -890,11 +895,14 @@ function applyAdmin(){
 }
 
 async function adminUpdateEstado(id,val,spId){
-  if(spStatus==='ok'&&spId){
-    try{await spUpdateItem('Solicitudes',spId,{Estado:val});}catch(e){console.warn(e);}
-  }
-  try{const r=await window.storage.get(`sol:${id}`,true);if(r){const rec=JSON.parse(r.value);rec.estado=val;await window.storage.set(`sol:${id}`,JSON.stringify(rec),true);}}catch(e){}
-  const rec=window.__adminRecs?.find(x=>x.id===id);if(rec)rec.estado=val;
+  const rec=window.__adminRecs?.find(x=>x.id===id);
+  if(rec)rec.estado=val;
+  try{
+    const r=await fetch(`${BACKEND_BASE}/solicitudes/${encodeURIComponent(id)}/estado`,{
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({estado:val})
+    });
+    if(!r.ok) console.warn('No se pudo actualizar el estado en el servidor', r.status);
+  }catch(e){ console.warn('No se pudo contactar al servidor para actualizar estado', e); }
 }
 
 async function dlDoc(id,key){
