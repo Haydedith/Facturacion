@@ -399,8 +399,9 @@ async function sendToBackend(record){
       });
     } finally { clearTimeout(timer); }
     if(!r.ok){
-      const t = await r.text().catch(()=> '');
-      return {ok:false, reason:`El servidor respondió con error ${r.status}. ${t.slice(0,150)}`};
+      let msg='';
+      try{ const jj = await r.json(); msg = (jj && jj.error) ? String(jj.error) : ''; }catch(_e){}
+      return {ok:false, reason: msg || `El servidor respondió con error ${r.status}.`};
     }
     const j = await r.json().catch(()=>({}));
     if(j.aviso){
@@ -1126,7 +1127,7 @@ function renderStep3(){
     </div>
   </div>`;
 }
-function goStep(n){st.step=n;renderNew();}
+function goStep(n){st.step=n;st.pendingId=null;renderNew();}
 
 // ─── SUBMIT ───────────────────────────────────────────────────────────────────
 async function submit(){
@@ -1134,7 +1135,9 @@ async function submit(){
   const errBox=document.getElementById('submitErr');
   if(errBox){errBox.classList.remove('show');errBox.textContent='';}
   btn.disabled=true;btn.textContent='Enviando… (puede tardar hasta 1 minuto)';
-  const id='SOL-'+Date.now().toString(36).toUpperCase();
+  // Mismo código en cada reintento del mismo envío: así el servidor no duplica el registro.
+  if(!st.pendingId) st.pendingId='SOL-'+Date.now().toString(36).toUpperCase();
+  const id=st.pendingId;
   const cr=clienteRow(),req=reqDocs(st.idCliente);
   const record={id,fecha:new Date().toISOString(),solicitante:user.nombre,correo:user.correo,tipoDoc:st.tipoDoc,sociedad:st.sociedad,
     idCliente:st.idCliente,nombreCliente:cr?cr[1]:'',empresa:cr?cr[3]:'',
@@ -1160,6 +1163,7 @@ async function submit(){
     aviso='Tu solicitud llegó al equipo de facturación por correo, pero no quedó guardada en el sistema de seguimiento, por eso por ahora no aparecerá en "Mis solicitudes". Avisa a la administradora del portal.';
     if(isAdmin()) aviso+=' Detalle técnico: '+backend.warn;
   }
+  st.pendingId=null;
   showTicket(id,aviso);
 }
 
