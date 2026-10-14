@@ -1,0 +1,2004 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mesa de Facturación · Tándem</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  // pdf.js necesita un worker; lo apuntamos al build correspondiente del CDN.
+  if(typeof pdfjsLib!=='undefined'){
+    pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+</script>
+<style>
+/* ─── TÁNDEM BRAND PALETTE ─────────────────────────────────────────────────── */
+:root{
+  --verde:    #C5EC4C;   /* Pantone 2297C */
+  --negro:    #232323;   /* Pantone Black 7C */
+  --gris:     #E5E8DD;   /* Pantone 7534C */
+  --verde-cl: #E0ECBB;   /* Pantone 2274C */
+  --verde-dk: #8FB520;   /* darker lime for hover/active */
+  --blanco:   #FFFFFF;
+  --muted:    #5C6B3A;
+  --red:      #B3443A;
+  --red-bg:   #F8E7E4;
+  --green-ok: #3E7C2B;
+  --green-bg: #EBF5D6;
+  --amber:    #D98E3F;
+  --amber-bg: #FDF3E3;
+  --mono: 'Courier New', monospace;
+  --sans: 'Segoe UI', Arial, sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--sans);background:var(--gris);color:var(--negro);min-height:100vh;}
+
+/* ─── TOP BAR ──────────────────────────────────────────────────────────────── */
+.topbar{
+  background:var(--negro); color:var(--verde);
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 28px; height:52px; position:sticky; top:0; z-index:100;
+}
+.topbar .logo{font-size:20px; font-weight:700; letter-spacing:-.02em;}
+.topbar .logo span{color:var(--verde);}
+.topbar .tagline{font-size:10.5px; color:var(--gris); letter-spacing:.1em; text-transform:uppercase;}
+.topbar .right{display:flex; align-items:center; gap:14px;}
+.user-chip{
+  font-family:var(--mono); font-size:11px; color:var(--verde);
+  display:flex; align-items:center; gap:8px;
+}
+.user-avatar{
+  width:28px; height:28px; border-radius:50%; background:var(--verde);
+  color:var(--negro); display:flex; align-items:center; justify-content:center;
+  font-weight:700; font-size:11px;
+}
+.badge-admin{
+  font-size:9.5px; background:var(--verde); color:var(--negro);
+  padding:2px 7px; border-radius:10px; font-weight:700; letter-spacing:.05em;
+}
+.logout-btn{
+  font-size:11px; color:var(--gris); background:none; border:none;
+  cursor:pointer; text-decoration:underline; font-family:var(--sans);
+}
+.sp-dot{
+  font-family:var(--mono); font-size:10px; padding:3px 9px; border-radius:3px;
+  border:1px solid #444;
+}
+.sp-dot.ok{border-color:var(--verde); color:var(--verde);}
+.sp-dot.local{border-color:var(--amber); color:var(--amber);}
+.sp-dot.loading{border-color:#666; color:#888;}
+
+/* ─── NAV TABS ─────────────────────────────────────────────────────────────── */
+.navtabs{
+  background:var(--negro); border-top:1px solid #3a3a3a;
+  display:flex; padding:0 28px; gap:4px;
+}
+.navtab{
+  font-family:var(--mono); font-size:12px; padding:10px 18px;
+  color:var(--gris); background:none; border:none; cursor:pointer;
+  border-bottom:3px solid transparent; transition:.15s;
+}
+.navtab:hover{color:var(--verde);}
+.navtab.active{color:var(--verde); border-bottom-color:var(--verde); font-weight:600;}
+.navtab.admin-tab{color:var(--amber);}
+.navtab.admin-tab.active{color:var(--amber); border-bottom-color:var(--amber);}
+
+/* ─── APP WRAPPER ───────────────────────────────────────────────────────────── */
+.app{max-width:1000px; margin:0 auto; padding:28px 20px 60px;}
+
+/* ─── LOGIN ─────────────────────────────────────────────────────────────────── */
+.login-page{
+  min-height:calc(100vh - 52px);
+  display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(135deg, var(--negro) 0%, #3a4a1a 100%);
+}
+.login-card{
+  background:var(--blanco); border-radius:8px; padding:40px 36px;
+  width:100%; max-width:400px; box-shadow:0 8px 40px rgba(0,0,0,.3);
+}
+.login-logo{
+  font-size:28px; font-weight:700; color:var(--negro); margin-bottom:4px;
+  display:flex; align-items:center; gap:10px;
+}
+.login-logo .dot{
+  width:36px; height:36px; background:var(--verde); border-radius:50%;
+  display:flex; align-items:center; justify-content:center; font-size:14px;
+}
+.login-sub{font-size:13px; color:var(--muted); margin-bottom:28px;}
+.login-divider{height:3px; background:var(--verde); margin-bottom:24px; border-radius:2px;}
+label.fl{display:block; font-size:12px; font-weight:600; color:var(--negro); margin-bottom:6px; letter-spacing:.02em;}
+input[type=text],select,textarea{
+  width:100%; padding:11px 13px; border:1px solid #d0d8c0; border-radius:4px;
+  font-family:var(--sans); font-size:14px; color:var(--negro); background:#fff;
+  transition:.15s;
+}
+input:focus,select:focus,textarea:focus{
+  outline:2px solid var(--verde); outline-offset:1px; border-color:var(--verde);
+}
+textarea{min-height:72px; resize:vertical;}
+.err-msg{
+  background:var(--red-bg); border-left:3px solid var(--red); color:var(--red);
+  padding:9px 13px; font-size:13px; border-radius:0 4px 4px 0;
+  margin-top:10px; display:none;
+}
+.err-msg.show{display:block;}
+
+/* ─── BUTTONS ───────────────────────────────────────────────────────────────── */
+.btn{
+  font-family:var(--mono); font-size:13px; padding:11px 24px; border-radius:4px;
+  border:2px solid var(--negro); background:var(--blanco); color:var(--negro);
+  cursor:pointer; transition:.15s; font-weight:600;
+}
+.btn.primary{background:var(--negro); color:var(--verde); border-color:var(--negro);}
+.btn.primary:hover{background:var(--verde-dk); border-color:var(--verde-dk); color:var(--negro);}
+.btn.primary:disabled{background:#aaa; border-color:#aaa; color:#fff; cursor:not-allowed;}
+.btn.verde{background:var(--verde); color:var(--negro); border-color:var(--verde);}
+.btn.verde:hover{background:var(--verde-dk); border-color:var(--verde-dk);}
+.btn.ghost{border-color:transparent; color:var(--muted); background:none;}
+.btn.ghost:hover{color:var(--negro);}
+.btn.sm{padding:7px 14px; font-size:11.5px;}
+.nav-row{display:flex; justify-content:space-between; align-items:center; margin-top:20px;}
+
+/* ─── CARDS ──────────────────────────────────────────────────────────────────── */
+.card{
+  background:var(--blanco); border:1px solid #d0d8c0; border-radius:6px;
+  padding:24px; margin-bottom:16px;
+}
+.card-head{
+  border-left:4px solid var(--verde); padding-left:12px; margin-bottom:16px;
+}
+.card-head h2{font-size:17px; color:var(--negro);}
+.card-head .sub{font-size:13px; color:var(--muted); margin-top:2px;}
+
+/* ─── STEPPER ───────────────────────────────────────────────────────────────── */
+.stepper{display:flex; margin-bottom:24px; gap:0;}
+.snode{flex:1; padding-top:10px;}
+.snode .bar{height:4px; background:#d0d8c0; border-radius:2px;}
+.snode.done .bar,.snode.active .bar{background:var(--verde);}
+.snode.done .bar{background:var(--verde-dk);}
+.snode .lbl{font-family:var(--mono); font-size:10.5px; margin-top:7px; color:#888; text-transform:uppercase; letter-spacing:.05em;}
+.snode.active .lbl{color:var(--negro); font-weight:700;}
+.snode.done .lbl{color:var(--verde-dk);}
+
+/* ─── CLIENT TAG ─────────────────────────────────────────────────────────────── */
+.client-tag{
+  display:inline-flex; align-items:center; gap:10px;
+  background:var(--negro); color:var(--verde); padding:6px 14px;
+  border-radius:4px; font-family:var(--mono); font-size:12px; margin-top:10px;
+}
+.client-tag .cid{color:var(--verde-cl);}
+
+/* ─── MANIFEST (doc checklist) ───────────────────────────────────────────────── */
+.manifest{border:1px solid #d0d8c0; border-radius:6px; overflow:hidden; margin-top:10px;}
+.manifest-head{
+  background:var(--negro); color:var(--verde);
+  padding:10px 16px; font-family:var(--mono); font-size:11px;
+  letter-spacing:.06em; text-transform:uppercase;
+  display:flex; justify-content:space-between;
+}
+.doc-row{display:flex; align-items:center; gap:14px; padding:14px 16px; border-bottom:1px solid var(--gris);}
+.doc-row:last-child{border-bottom:none;}
+.doc-row:nth-child(even){background:#fafcf5;}
+.stamp{
+  width:36px; height:36px; border-radius:50%; border:2px solid #d0d8c0;
+  display:flex; align-items:center; justify-content:center; font-size:17px;
+  flex-shrink:0; background:#fff; color:#aaa;
+}
+.doc-row.ok .stamp{border-color:var(--green-ok); color:var(--green-ok); background:var(--green-bg);}
+.doc-row.err .stamp{border-color:var(--red); color:var(--red); background:var(--red-bg);}
+.doc-row.warn .stamp{border-color:var(--amber); color:var(--amber); background:var(--amber-bg);}
+.doc-row.warn .status-msg{color:var(--amber);}
+.doc-info{flex:1; min-width:0;}
+.doc-info .dname{font-weight:600; font-size:14px; color:var(--negro);}
+.req-tag{font-family:var(--mono); font-size:10px; color:var(--amber); margin-left:8px; text-transform:uppercase;}
+.status-msg{font-size:12.5px; margin-top:3px; color:#888;}
+.doc-row.ok .status-msg{color:var(--green-ok);}
+.doc-row.err .status-msg{color:var(--red);}
+input[type=file]{display:none;}
+.ubtn{
+  font-family:var(--mono); font-size:11.5px; padding:8px 14px;
+  border:1.5px solid var(--negro); background:var(--blanco); border-radius:3px;
+  cursor:pointer; white-space:nowrap; transition:.15s;
+}
+.ubtn:hover{background:var(--negro); color:var(--verde);}
+.blocker{
+  background:var(--red-bg); border-left:3px solid var(--red); color:var(--red);
+  border-radius:0 4px 4px 0; padding:10px 14px; font-size:13px;
+  margin-top:14px; display:none;
+}
+.blocker.show{display:block;}
+
+/* ─── TICKET / CONFIRMACIÓN ─────────────────────────────────────────────────── */
+.ticket{
+  border:3px solid var(--verde); border-radius:8px; padding:36px 28px;
+  text-align:center; background:var(--blanco);
+}
+.tick-icon{
+  width:56px; height:56px; border-radius:50%; background:var(--verde);
+  color:var(--negro); display:flex; align-items:center; justify-content:center;
+  font-size:28px; margin:0 auto 14px; font-weight:700;
+}
+.tick-id{font-family:var(--mono); font-size:26px; font-weight:700; color:var(--negro); margin:8px 0;}
+.tick-sub{font-size:13.5px; color:var(--muted);}
+
+/* ─── ADMIN PANEL ───────────────────────────────────────────────────────────── */
+.kpi-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:20px;}
+.kpi{border-radius:8px; padding:18px; text-align:center; border:1px solid #d0d8c0;}
+.kpi .kpi-label{font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.07em; margin-bottom:6px;}
+.kpi .kpi-val{font-size:32px; font-weight:700;}
+.kpi.pend{background:var(--amber-bg);} .kpi.pend .kpi-label{color:var(--amber);} .kpi.pend .kpi-val{color:var(--amber);}
+.kpi.proc{background:#DCE6F5;} .kpi.proc .kpi-label{color:#2A4D8F;} .kpi.proc .kpi-val{color:#2A4D8F;}
+.kpi.fact{background:var(--green-bg);} .kpi.fact .kpi-label{color:var(--green-ok);} .kpi.fact .kpi-val{color:var(--green-ok);}
+
+/* ─── TABLE ──────────────────────────────────────────────────────────────────── */
+.tbl-wrap{overflow-x:auto;}
+table{width:100%; border-collapse:collapse; font-size:13px;}
+th{
+  text-align:left; font-family:var(--mono); font-size:10px; text-transform:uppercase;
+  letter-spacing:.05em; color:var(--blanco); background:var(--negro);
+  padding:9px 12px; white-space:nowrap;
+}
+td{padding:10px 12px; border-bottom:1px solid var(--gris); vertical-align:top;}
+tr:hover td{background:#f5fae8;}
+.pill{font-family:var(--mono); font-size:10px; padding:3px 9px; border-radius:10px; text-transform:uppercase; white-space:nowrap;}
+.pill-pend{background:var(--amber-bg); color:var(--amber);}
+.pill-proc{background:#DCE6F5; color:#2A4D8F;}
+.pill-fact{background:var(--green-bg); color:var(--green-ok);}
+.doc-pill{display:inline-block; font-family:var(--mono); font-size:10px; padding:2px 7px; border-radius:3px; margin:2px; background:var(--green-bg); color:var(--green-ok);}
+.filters{display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;}
+.filters select{width:auto; min-width:160px;}
+.ss{font-family:var(--mono); font-size:11px; padding:4px 8px; border:1px solid #d0d8c0; border-radius:3px;}
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+@media(max-width:600px){.grid2{grid-template-columns:1fr;} .kpi-grid{grid-template-columns:1fr;}}
+details summary{cursor:pointer; font-family:var(--mono); font-size:11.5px; color:var(--muted);}
+.dl-link{font-size:11.5px; color:var(--negro); text-decoration:underline; cursor:pointer; display:block; margin-top:3px;}
+.info-bar{
+  background:var(--verde-cl); border:1px solid #c0d8a0; border-radius:4px;
+  padding:9px 14px; font-size:12.5px; color:var(--negro); margin-bottom:14px;
+}
+
+/* ─── MONITOREO ────────────────────────────────────────────────────────────── */
+.app.mon-wide{max-width:1360px;}
+.mon-card{padding:14px 16px;}
+.mon-head-row{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;}
+.mon-head-row .card-head{margin-bottom:0;}
+.mon-head-row .filters{margin:0;}
+
+.mon-topgrid{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:10px;}
+@media(max-width:700px){.mon-topgrid{grid-template-columns:repeat(2,1fr);}}
+.mon-kpi{background:var(--blanco); border:1px solid #d0d8c0; border-radius:8px; padding:10px 8px; text-align:center;}
+.mon-kpi .val{font-size:21px; font-weight:700; line-height:1;}
+.mon-kpi .lbl{font-family:var(--mono); font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-top:4px;}
+
+.mon-grid4{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:10px;}
+@media(max-width:1100px){.mon-grid4{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:520px){.mon-grid4{grid-template-columns:1fr;}}
+.mon-gaugecard{display:flex; flex-direction:column; align-items:center; padding:10px 8px 6px; margin-bottom:0;}
+.mon-gauge-title{font-size:12.5px; font-weight:700; color:var(--negro); margin-bottom:1px; text-align:center;}
+.mon-gauge-sub{font-size:10px; color:var(--muted); margin-bottom:2px; text-align:center; line-height:1.25;}
+.mon-gauge-avg{font-family:var(--mono); font-size:10.5px; color:var(--muted); margin-top:2px; text-align:center;}
+
+.mon-bottom-row{display:grid; grid-template-columns:1.3fr 1fr; gap:10px;}
+@media(max-width:900px){.mon-bottom-row{grid-template-columns:1fr;}}
+
+.hourbars{display:flex; justify-content:space-around; align-items:flex-end; height:100px; margin:14px 0 4px; gap:6px;}
+.hb-group{display:flex; flex-direction:column; align-items:center; flex:1;}
+.hb-cols{display:flex; align-items:flex-end; gap:5px; height:78px;}
+.hb-col{width:15px; border-radius:3px 3px 0 0; position:relative;}
+.hb-lbl{font-family:var(--mono); font-size:9px; color:var(--muted); margin-top:6px; text-align:center; line-height:1.25;}
+.hb-val{font-size:9px; font-weight:700; position:absolute; top:-15px; left:50%; transform:translateX(-50%); white-space:nowrap;}
+.mon-legend{display:flex; gap:14px; justify-content:center; font-family:var(--mono); font-size:10px; color:var(--muted); margin-top:2px; flex-wrap:wrap;}
+.mon-legend .dot{width:8px; height:8px; border-radius:2px; display:inline-block; margin-right:4px;}
+.mon-avgpills{display:flex; justify-content:center; gap:8px; margin-top:8px; flex-wrap:wrap;}
+.mon-avgpill{font-family:var(--mono); font-size:10.5px; padding:5px 10px; border-radius:4px; background:var(--gris); color:var(--negro);}
+.mon-avgpill b{font-size:12px;}
+
+.rank-list{max-height:170px; overflow-y:auto; padding-right:4px;}
+.rank-row{display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--gris);}
+.rank-row:last-child{border-bottom:none;}
+.rank-name{width:130px; font-size:11.5px; flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.rank-track{flex:1; height:9px; background:var(--gris); border-radius:5px; overflow:hidden;}
+.rank-fill{height:100%; border-radius:5px;}
+.rank-val{width:56px; text-align:right; font-family:var(--mono); font-size:10.5px; font-weight:700; flex-shrink:0;}
+
+/* ─── Estado de conexión en el ingreso ─── */
+.login-status{font-size:12.5px; margin-top:12px; line-height:1.4; display:none;}
+.login-status.wait{display:block; color:var(--muted);}
+.login-status.warn{display:block; color:var(--amber); background:var(--amber-bg); border-left:3px solid var(--amber); padding:8px 10px; border-radius:0 4px 4px 0;}
+
+/* ─── Ingreso por código ─── */
+.login-hint{font-size:12px; color:var(--muted); margin-top:8px;}
+.login-info{font-size:13px; color:var(--negro); margin-bottom:14px; line-height:1.45;}
+.login-link{background:none; border:none; color:var(--muted); text-decoration:underline; cursor:pointer; font-family:var(--sans); font-size:12.5px; padding:0;}
+.login-link:disabled{opacity:.55; cursor:default; text-decoration:none;}
+#loginCode{font-family:var(--mono); font-size:22px; letter-spacing:8px; text-align:center;}
+
+/* ─── Panel de Facturación a todo el ancho ─── */
+.app.adm-wide{max-width:none; padding:18px 20px 50px;}
+.adm-wide .card{padding:18px 20px;}
+.adm-wide .kpi-grid{gap:12px; margin-bottom:14px;}
+.adm-wide .kpi{padding:12px;}
+.adm-wide .kpi .kpi-val{font-size:26px;}
+.adm-table{font-size:12.5px;}
+.adm-table th{padding:8px 8px; white-space:normal; line-height:1.25;}
+.adm-table td{padding:8px 8px; overflow-wrap:break-word;}
+.adm-table select.ss{min-width:114px; padding:5px 6px;}
+.adm-table td:first-child, .adm-table td:nth-child(8){white-space:nowrap;}
+
+/* ─── Mis solicitudes ─── */
+.hist-filters{align-items:flex-end; gap:12px;}
+.fgrp{display:flex; flex-direction:column;}
+.fgrp .fl{margin-bottom:4px; font-size:11.5px;}
+input[type=date]{padding:10px 12px; border:1px solid #d0d8c0; border-radius:4px; font-family:var(--sans); font-size:14px; color:var(--negro); background:#fff;}
+input[type=date]:focus{outline:2px solid var(--verde); outline-offset:1px; border-color:var(--verde);}
+.kpi.neu{background:var(--blanco);} .kpi.neu .kpi-label,.kpi.neu .kpi-val{color:var(--negro);}
+.kpi .kpi-sub{font-size:11.5px; color:var(--muted); margin-top:4px; font-family:var(--mono);}
+.kpi.fact .kpi-label{line-height:1.3;}
+.adm-table td.nw{white-space:nowrap;}
+
+/* ─── Datos automáticos (paso 3) ─── */
+.pnl{margin-top:18px; border:1px solid #c0d8a0; border-radius:8px; background:#fbfdf5; padding:16px 20px;}
+.pnl-h{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+.pnl-h .t{font-weight:700; font-size:14px;}
+.chip{font-family:var(--mono); font-size:10px; background:var(--negro); color:var(--verde); padding:3px 9px; border-radius:10px; letter-spacing:.05em;}
+.f3{display:grid; grid-template-columns:150px minmax(180px,300px) 1fr; gap:12px 16px; align-items:center; margin-top:14px;}
+@media(max-width:700px){.f3{grid-template-columns:1fr;}}
+.f3 .lab{font-family:var(--mono); font-weight:700; font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--negro);}
+.f3 .box{background:var(--gris); border:1px solid #b7c29c; border-radius:4px; padding:9px 13px; font-family:var(--mono); font-size:17px; font-weight:700; min-height:42px; display:flex; align-items:center; word-break:break-all;}
+.f3 .box.sin{border-style:dashed; background:#f3f5ec;}
+.f3 .box.err{background:var(--red-bg); border-color:var(--red); color:var(--red);}
+.f3 .cap{font-size:11.5px; color:var(--muted); line-height:1.35;}
+.f3 .cap.err{color:var(--red); font-weight:600;}
+table.mt{width:100%; border-collapse:collapse; margin-top:18px; font-size:12.5px; border:1px solid #b7c29c;}
+table.mt th{background:var(--negro); color:var(--verde); padding:8px 9px; text-align:left; font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.05em; border-right:1px solid #444;}
+table.mt td{background:var(--gris); padding:9px; border-top:1px solid #b7c29c; border-right:1px solid #b7c29c; vertical-align:top; overflow-wrap:break-word;}
+table.mt td.m{font-family:var(--mono); font-weight:700;} table.mt td.r{text-align:right; font-family:var(--mono);}
+table.mt td.v{background:var(--red-bg); color:var(--red);}
+.tot{font-size:12.5px; color:var(--muted); margin-top:8px; text-align:right;} .tot b{color:var(--negro); font-family:var(--mono);}
+.nota{font-size:11.5px; color:var(--muted); margin-top:12px; line-height:1.5;} .nota.err{color:var(--red); font-weight:600;}
+</style>
+</head>
+<body>
+
+<div id="loginPage"></div>
+<div id="mainApp" style="display:none;">
+  <div class="topbar">
+    <div>
+      <div class="logo">Tándem<span>.</span></div>
+      <div class="tagline">Mesa de Facturación</div>
+    </div>
+    <div class="right">
+      <div id="spDot" class="sp-dot loading">● conectando…</div>
+      <div class="user-chip">
+        <div class="user-avatar" id="userAvatar">HP</div>
+        <span id="userName">—</span>
+        <span id="adminBadge" class="badge-admin" style="display:none;">FACTURACIÓN</span>
+      </div>
+      <button class="logout-btn" onclick="doLogout()">Salir</button>
+    </div>
+  </div>
+  <div class="navtabs" id="navtabs"></div>
+  <div class="app" id="appWrap">
+    <div id="viewNew"></div>
+    <div id="viewHist" style="display:none;"></div>
+    <div id="viewAdmin" style="display:none;"></div>
+    <div id="viewMonitor" style="display:none;"></div>
+  </div>
+</div>
+
+<script>
+
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+// ─── SERVIDOR EN RENDER (backend real: sube a SharePoint y manda el correo con adjuntos) ──
+const BACKEND_URL = 'https://facturacion-servidor-1.onrender.com/solicitud';
+const BACKEND_BASE = 'https://facturacion-servidor-1.onrender.com';
+async function fetchSolicitudesFromBackend(soloMias){
+  try{
+    const r = await apiFetch(`${BACKEND_BASE}/solicitudes`);
+    if(!r.ok){
+      let m=''; try{ const jj=await r.json(); m=(jj&&jj.error)?String(jj.error):''; }catch(_e){}
+      return {ok:false, recs:[], reason: m || `El servidor respondió ${r.status}`};
+    }
+    const rows = await r.json();
+    let recs = rows.map(row=>({
+      id: row.sol_id, spSolId: row.sol_id, fecha: row.fecha_solicitud, fechaRespuesta: row.fecha_respuesta,
+      fechaFacturado: row.fecha_facturado || (['Facturado','Enviado'].includes(row.estado)?row.fecha_respuesta:null),
+      fechaEnvio: row.fecha_envio || (row.estado==='Enviado'?row.fecha_respuesta:null),
+      solicitante: row.solicitante, idCliente: row.id_cliente, nombreCliente: row.cliente,
+      empresa: row.empresa, estado: row.estado || 'Pendiente', notas: row.notas,
+      documentos: (row.documentos||'').split(',').map(d=>d.trim()).filter(Boolean),
+      tipoDoc: row.tipo_doc, sociedad: row.sociedad,
+      montoTotal: row.monto_total!=null ? Number(row.monto_total) : null,
+      montoSinIgv: row.monto_sin_igv!=null ? Number(row.monto_sin_igv) : null,
+      moneda: row.moneda||'PEN', ocNumero: row.oc_numero||'', credito: row.credito||'', mat: row.mat||''
+    }));
+    if(soloMias) recs = recs.filter(r=>r.solicitante===user.nombre);
+    return {ok:true, recs};
+  }catch(e){
+    return {ok:false, recs:[], reason:'No se pudo contactar al servidor: '+e.message};
+  }
+}
+async function sendToBackend(record){
+  try{
+    const archivos = Object.entries(st.docs)
+      .filter(([,d])=>d?.base64)
+      .map(([key,d])=>({nombre:`${key}_${d.fileName}`, base64:d.base64}));
+    const payload = {
+      sol_id: record.id,
+      solicitante: record.solicitante,
+      correo_sol: record.correo,
+      cliente: record.nombreCliente,
+      id_cliente: record.idCliente,
+      empresa: record.empresa,
+      tipo_doc: record.tipoDoc,
+      sociedad: record.sociedad,
+      documentos: (record.documentos||[]).join(', '),
+      documentos_info: (record.documentos||[]).join(', '),
+      oc_numero: record.ocNumero||'',
+      oc_importe_sin_igv: record.ocImporteSinIgv||'',
+      monto_total: record.montoTotal,
+      monto_sin_igv: record.montoSinIgv,
+      moneda: record.moneda,
+      credito: record.credito||'',
+      hes_relaciona_oc: record.hesRelacionaOc,
+      notas: record.notas,
+      fecha_hora: record.fecha,
+      archivos
+    };
+    const ctrl = new AbortController();
+    const timer = setTimeout(()=>ctrl.abort(), 90000); // máx. 90 s (el servidor gratuito puede tardar en despertar)
+    let r;
+    try{
+      r = await apiFetch(BACKEND_URL, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload),
+        signal: ctrl.signal
+      });
+    } finally { clearTimeout(timer); }
+    if(!r.ok){
+      let msg='';
+      try{ const jj = await r.json(); msg = (jj && jj.error) ? String(jj.error) : ''; }catch(_e){}
+      return {ok:false, reason: msg || `El servidor respondió con error ${r.status}.`};
+    }
+    const j = await r.json().catch(()=>({}));
+    if(j.aviso){
+      return {ok:true, warn: j.aviso};
+    }
+    return {ok:true};
+  }catch(e){
+    return {ok:false, reason:'No se pudo contactar al servidor. Si llevaba un rato sin usarse, puede tardar hasta 50 segundos en "despertar" — intenta de nuevo en un minuto. Detalle: '+e.message};
+  }
+}
+const SKIP_VAL= ['SD FMRETAIL','TIC'];
+const TIPOS_DOC = ['Factura','Nota de Crédito','Nota de Débito','Boleta'];
+const SOCIEDADES = ['Panorama Outsourcing','Sinercorp','Panorama Staff','Tándem'];
+// Equivalencia entre el valor "Empresa" (tabla de clientes) y el valor "Sociedad" (Paso 1).
+// Si agregas una empresa nueva en el futuro, súmala aquí para que el filtro la reconozca.
+const EMPRESA_SOCIEDAD_MAP={'P. Outsourcing':'Panorama Outsourcing','P. Staff':'Panorama Staff','Sinercorp':'Sinercorp','Tándem':'Tándem','Jeruth':'Jeruth'};
+// Excepciones manuales: habilita o deshabilita sociedades para un solicitante puntual SIN
+// necesidad de agregarle/quitarle clientes ni tocar Supabase. Edita esta lista y sube el
+// archivo a GitHub para que surta efecto.
+//   agregar:'...'  -> le suma esa Sociedad aunque no tenga clientes ahí.
+//   quitar:'...'   -> le retira esa Sociedad aunque sí tenga clientes ahí.
+const PERMISOS_MANUALES={
+  // 'Andrea Castro': {agregar:['Panorama Staff'], quitar:[]},
+};
+// Signature of our official Tándem plantilla
+const PLANTILLA_FIRMA = ['ORDEN DE FACTURACIÓN','RAZÓN SOCIAL','RUC','GLOSA / DESCRIPCIÓN','IGV 18%'];
+const MAX_FILE = 1.8*1024*1024;
+
+// Sociedades que un solicitante puede elegir en el Paso 1: se derivan automáticamente de
+// bajo qué "Empresa" están sus clientes (tabla `clientes`), más/menos las excepciones
+// manuales de PERMISOS_MANUALES. La administradora (según el servidor) no tiene restricción.
+function sociedadesPermitidas(nombreSolicitante){
+  if(isAdmin()) return SOCIEDADES.slice();
+  const empresasCliente=[...new Set((data().clientes||[])
+    .filter(c=>c[0]===nombreSolicitante)
+    .map(c=>c[3]))];
+  const auto=new Set(empresasCliente.map(e=>EMPRESA_SOCIEDAD_MAP[e]||e).filter(s=>SOCIEDADES.includes(s)));
+  const manual=PERMISOS_MANUALES[nombreSolicitante];
+  if(manual){
+    (manual.agregar||[]).forEach(s=>auto.add(s));
+    (manual.quitar||[]).forEach(s=>auto.delete(s));
+  }
+  return SOCIEDADES.filter(s=>auto.has(s));
+}
+
+const DOC_TYPES=[
+  {key:'Plantilla',label:'Plantilla de facturación (Excel)',accept:'.xlsx,.xls',kind:'xlsx'},
+  {key:'OC',label:'Orden de Compra (OC)',accept:'.pdf,.xlsx',kind:'pdf_kw'},
+  {key:'HES',label:'Hoja de Entrada de Servicios (HES)',accept:'.pdf,.xlsx',kind:'pdf_kw'},
+  {key:'ActaConformidad',label:'Acta de Conformidad',accept:'.pdf',kind:'pdf_kw'},
+  {key:'ExcelLiquidacion',label:'Excel de Liquidación',accept:'.xlsx,.xls',kind:'xlsx_gen'},
+  {key:'AceptacionServicio',label:'Aceptación del Servicio',accept:'.pdf',kind:'pdf_kw'},
+  {key:'CDR',label:'Comprobante de Retención (CDR)',accept:'.pdf',kind:'pdf_kw'},
+  {key:'Adicionales',label:'Documentos adicionales',accept:'.pdf,.xlsx',kind:'file'},
+];
+const KW_MAP={
+  OC:['orden de compra','order','oc-','n° oc','nro. oc','nro oc','purchase order'],
+  HES:['hoja de entrada','hes','entrada de servicio','service entry','ses'],
+  ActaConformidad:['acta de conformidad','conformidad','conforme','acta'],
+  AceptacionServicio:['aceptación','aceptacion','aprobado','accepted'],
+  CDR:['comprobante de retención','retencion','cdr','ret.'],
+};
+const REGLA_COLS=['IDCliente','NombreCliente','Plantilla','OC','HES','ActaConformidad','ExcelLiquidacion','AceptacionServicio','CDR','Adicionales','Notas'];
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let user=null, authToken='', spStatus='idle', spData=null, currentTab='new';
+let st={step:1,idCliente:'',notas:'',docs:{},tipoDoc:'',sociedad:''};
+
+async function loadSpData(){
+  spStatus='loading'; renderSpDot();
+  let timer=null;
+  try{
+    const ctrl=new AbortController();
+    timer=setTimeout(()=>ctrl.abort(),70000); // espera hasta 70 s por si el servidor está "dormido"
+    const r=await apiFetch(`${BACKEND_BASE}/config`,{signal:ctrl.signal});
+    if(!r.ok) throw new Error('config respondió '+r.status);
+    const j=await r.json();
+    if(!j||!Array.isArray(j.clientes)||!Array.isArray(j.reglas)) throw new Error('config con formato inesperado');
+    spData=j; spStatus='ok';
+  }catch(e){
+    console.warn('No se pudo cargar la configuración:',e.message);
+    spData=null; spStatus='error';
+  }finally{ if(timer) clearTimeout(timer); }
+  renderSpDot();
+  if(user&&currentTab==='new') renderCurrentTab();
+}
+
+function renderSpDot(){
+  const d=document.getElementById('spDot'); if(!d) return;
+  const map={ok:'● Servidor conectado',error:'● Sin conexión',loading:'● conectando…',idle:'● —'};
+  const cls={ok:'ok',error:'local',loading:'loading',idle:'loading'};
+  d.className='sp-dot '+(cls[spStatus]||'');
+  d.textContent=map[spStatus]||'';
+}
+
+// ─── DATA HELPERS ─────────────────────────────────────────────────────────────
+function data(){return spData||{solicitantes:[],empresas:[],clientes:[],reglas:[]};}
+function clientesFor(n){return data().clientes.filter(c=>c[0]===n);}
+function reglaFor(id){return data().reglas.find(r=>r[0]===id);}
+function reqDocs(id){
+  const r=reglaFor(id); if(!r) return [];
+  return DOC_TYPES.filter(dt=>{const i=REGLA_COLS.indexOf(dt.key); return r[i]==='Si'||r[i]===true;});
+}
+function clienteRow(){return data().clientes.find(c=>c[2]===st.idCliente);}
+// Normaliza: mayúsculas, sin tildes, sin puntuación — para comparar de forma robusta
+function normTxt(s){
+  return String(s||'').toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^A-Z0-9 ]/g,' ')
+    .replace(/\s+/g,' ').trim();
+}
+const CORP_SUFFIXES=new Set(['SA','SAA','SAC','SRL','EIRL','SCRL','LTDA','CORP','CORPORATION','COMPANY','CO','INC','LLC','GROUP','GRUPO','DEL','DE','LA','LAS','LOS','Y','PERU','PERÚ','S']);
+function clienteCoreWords(nombre){
+  return normTxt(nombre).split(' ').filter(w=>w.length>=3 && !CORP_SUFFIXES.has(w));
+}
+function clienteMatches(textUpper){
+  if(SKIP_VAL.includes(user?.nombre)||isAdmin()) return true;
+  if(!st.idCliente) return true;
+  const cr=clienteRow();
+  if(!cr) return true;
+  const words=clienteCoreWords(cr[1]);
+  if(!words.length) return true;
+  const normText=normTxt(textUpper);
+  // Palabra más distintiva (la más larga) — si aparece, alcanza.
+  const mainWord=[...words].sort((a,b)=>b.length-a.length)[0];
+  if(mainWord && normText.includes(mainWord)) return true;
+  // Si no, exigir que al menos la mitad de las palabras significativas aparezcan.
+  const hits=words.filter(w=>normText.includes(w)).length;
+  return hits>=Math.max(1,Math.ceil(words.length*0.5));
+}
+function isAdmin(){return !!(user&&user.admin);}
+function initials(n){return n.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();}
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// ─── SESIÓN E INICIO DE SESIÓN (código de 6 dígitos enviado al correo) ───────
+const SESION_KEY='mf_sesion';
+let loginStep='correo', loginCorreo='', reenvioHasta=0, reenvioTimer=null;
+
+// Igual que fetch, pero agrega la sesión. Si el servidor dice que venció, vuelve a la pantalla de ingreso.
+async function apiFetch(url,opts={}){
+  const headers=Object.assign({},opts.headers||{});
+  if(authToken) headers['Authorization']='Bearer '+authToken;
+  const r=await fetch(url,Object.assign({},opts,{headers}));
+  if(r.status===401 && authToken) cerrarSesionVencida();
+  return r;
+}
+function guardarSesion(){ try{ sessionStorage.setItem(SESION_KEY,JSON.stringify({token:authToken,user})); }catch(_e){} }
+function borrarSesion(){ try{ sessionStorage.removeItem(SESION_KEY); }catch(_e){} }
+function cerrarSesionVencida(){
+  user=null; authToken=''; spData=null; spStatus='idle'; currentTab='new'; borrarSesion();
+  loginStep='correo';
+  renderLogin('Tu sesión venció. Ingresa de nuevo con tu correo.');
+}
+
+function renderLogin(aviso=''){
+  const enCorreo=loginStep==='correo';
+  document.getElementById('loginPage').innerHTML=`
+  <div class="login-page">
+    <div class="login-card">
+      <div class="login-logo"><div class="dot">T</div> Tándem.</div>
+      <div class="login-sub">Mesa de Solicitudes de Facturación</div>
+      <div class="login-divider"></div>
+      ${enCorreo?`
+        <label class="fl">Tu correo corporativo</label>
+        <input type="text" id="loginEmail" placeholder="nombre@empresa.pe" autocomplete="email" value="${esc(loginCorreo)}"
+          onkeydown="if(event.key==='Enter') pedirCodigo()">
+        <div class="login-hint">Te enviaremos un código de 6 dígitos para ingresar.</div>`:`
+        <div class="login-info">Enviamos un código de 6 dígitos a <b>${esc(loginCorreo)}</b>. Vence en 10 minutos; si no lo ves, revisa el correo no deseado.</div>
+        <label class="fl">Código</label>
+        <input type="text" id="loginCode" inputmode="numeric" maxlength="6" placeholder="······" autocomplete="one-time-code"
+          onkeydown="if(event.key==='Enter') verificarCodigo()">`}
+      <div class="err-msg ${aviso?'show':''}" id="loginErr">${esc(aviso)}</div>
+      <div id="loginStatus" class="login-status"></div>
+      <div style="margin-top:20px;">
+        <button id="loginBtn" class="btn primary" style="width:100%;" onclick="${enCorreo?'pedirCodigo()':'verificarCodigo()'}">${enCorreo?'Enviar código →':'Ingresar →'}</button>
+      </div>
+      ${enCorreo?'':`<div style="margin-top:14px;display:flex;justify-content:space-between;">
+        <button id="reenviarBtn" class="login-link" onclick="pedirCodigo(true)">Reenviar código</button>
+        <button class="login-link" onclick="cambiarCorreo()">Usar otro correo</button>
+      </div>`}
+    </div>
+  </div>`;
+  document.getElementById('mainApp').style.display='none';
+  document.getElementById('loginPage').style.display='';
+  actualizarReenvio();
+  const campo=document.getElementById(enCorreo?'loginEmail':'loginCode'); if(campo) campo.focus();
+}
+function mostrarErrorLogin(msg){
+  const e=document.getElementById('loginErr'); if(!e) return;
+  e.textContent=msg||''; e.classList.toggle('show',!!msg);
+}
+function textoErrorRed(e){
+  if(e&&e.name==='AbortError') return 'El servidor tardó demasiado en responder. Intenta de nuevo en un minuto.';
+  if(e&&e.message&&!/Failed to fetch|NetworkError|Load failed/i.test(e.message)) return e.message;
+  return 'No se pudo contactar al servidor. Intenta de nuevo en un minuto.';
+}
+function actualizarReenvio(){
+  clearTimeout(reenvioTimer);
+  const b=document.getElementById('reenviarBtn'); if(!b) return;
+  const falta=Math.ceil((reenvioHasta-Date.now())/1000);
+  if(falta>0){ b.disabled=true; b.textContent=`Reenviar código (${falta}s)`; reenvioTimer=setTimeout(actualizarReenvio,1000); }
+  else{ b.disabled=false; b.textContent='Reenviar código'; }
+}
+function cambiarCorreo(){ loginStep='correo'; renderLogin(); }
+
+async function pedirCodigo(reenvio=false){
+  const btn=document.getElementById('loginBtn');
+  let correo=loginCorreo;
+  if(!reenvio){
+    correo=(document.getElementById('loginEmail')?.value||'').trim().toLowerCase();
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(correo)){ mostrarErrorLogin('Escribe un correo válido, por ejemplo nombre@empresa.pe.'); return; }
+  }
+  mostrarErrorLogin('');
+  const textoBtn=loginStep==='correo'?'Enviar código →':'Ingresar →';
+  if(btn){ btn.disabled=true; btn.textContent='Enviando… (la primera vez del día puede tardar hasta 1 minuto)'; }
+  let timer=null;
+  try{
+    const ctrl=new AbortController(); timer=setTimeout(()=>ctrl.abort(),90000);
+    const r=await fetch(`${BACKEND_BASE}/auth/solicitar`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({correo}),signal:ctrl.signal});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.error||`El servidor respondió con error ${r.status}.`);
+    loginCorreo=correo; loginStep='codigo'; reenvioHasta=Date.now()+60000;
+    renderLogin();
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.textContent=textoBtn; }
+    mostrarErrorLogin(textoErrorRed(e));
+  }finally{ if(timer) clearTimeout(timer); }
+}
+
+async function verificarCodigo(){
+  const btn=document.getElementById('loginBtn');
+  const codigo=(document.getElementById('loginCode')?.value||'').replace(/\D/g,'');
+  if(codigo.length!==6){ mostrarErrorLogin('Escribe el código de 6 dígitos.'); return; }
+  mostrarErrorLogin('');
+  if(btn){ btn.disabled=true; btn.textContent='Verificando…'; }
+  try{
+    const r=await fetch(`${BACKEND_BASE}/auth/verificar`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({correo:loginCorreo,codigo})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.error||`El servidor respondió con error ${r.status}.`);
+    await iniciarSesion(j.usuario,j.token);
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.textContent='Ingresar →'; }
+    mostrarErrorLogin(textoErrorRed(e));
+    const c=document.getElementById('loginCode'); if(c){ c.value=''; c.focus(); }
+  }
+}
+
+async function iniciarSesion(u,token){
+  user={nombre:u.nombre,correo:u.correo,admin:!!u.admin}; authToken=token; guardarSesion();
+  st={step:1,idCliente:'',notas:'',docs:{},tipoDoc:'',sociedad:''};
+  currentTab=user.admin?'admin':'new'; spData=null; spStatus='loading';
+  document.getElementById('loginPage').style.display='none';
+  document.getElementById('mainApp').style.display='';
+  document.getElementById('userName').textContent=user.nombre;
+  document.getElementById('userAvatar').textContent=initials(user.nombre);
+  document.getElementById('adminBadge').style.display=user.admin?'':'none';
+  renderNavTabs();
+  renderCurrentTab();
+  await loadSpData();
+}
+
+function doLogout(){
+  user=null; authToken=''; spData=null; spStatus='idle'; currentTab='new'; borrarSesion();
+  loginStep='correo'; loginCorreo='';
+  renderLogin();
+}
+
+// Al abrir la página: despierta el servidor y, si había una sesión guardada en esta pestaña, la comprueba.
+async function iniciar(){
+  fetch(`${BACKEND_BASE}/health`).catch(()=>{});
+  let guardada=null;
+  try{ guardada=JSON.parse(sessionStorage.getItem(SESION_KEY)||'null'); }catch(_e){}
+  renderLogin();
+  if(guardada&&guardada.token){
+    const msg=document.getElementById('loginStatus');
+    if(msg){ msg.className='login-status wait'; msg.textContent='Comprobando tu sesión…'; }
+    try{
+      const r=await fetch(`${BACKEND_BASE}/auth/yo`,{headers:{'Authorization':'Bearer '+guardada.token}});
+      if(r.ok){ const j=await r.json(); await iniciarSesion(j.usuario,guardada.token); return; }
+    }catch(_e){}
+    borrarSesion();
+    renderLogin();
+  }
+}
+
+// ─── NAV ─────────────────────────────────────────────────────────────────────
+function renderNavTabs(){
+  const tabs=[
+    ...(isAdmin()?[{id:'admin',label:'⚙ Panel de Facturación',admin:true}]:[]),
+    {id:'new',label:'Nueva solicitud',admin:false},
+    {id:'hist',label:'Mis solicitudes',admin:false},
+    ...(isAdmin()?[{id:'monitor',label:'📊 Monitoreo',admin:true}]:[])
+  ];
+  document.getElementById('navtabs').innerHTML=tabs.map(t=>
+    `<button class="navtab ${t.admin?'admin-tab':''} ${currentTab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.label}</button>`
+  ).join('');
+}
+function setTab(t){currentTab=t;renderNavTabs();renderCurrentTab();}
+function renderCurrentTab(){
+  ['new','hist','admin','monitor'].forEach(v=>{
+    const el=document.getElementById('view'+v.charAt(0).toUpperCase()+v.slice(1));
+    if(el) el.style.display=currentTab===v?'':'none';
+  });
+  const appWrap=document.getElementById('appWrap');
+  if(appWrap){ appWrap.classList.toggle('mon-wide',currentTab==='monitor'); appWrap.classList.toggle('adm-wide',currentTab==='admin'||currentTab==='hist'); }
+  if(currentTab==='new') renderNew();
+  else if(currentTab==='hist') renderHist();
+  else if(currentTab==='admin'&&isAdmin()) renderAdmin();
+  else if(currentTab==='monitor'&&isAdmin()) renderMonitor();
+}
+
+// ─── STEPPER ─────────────────────────────────────────────────────────────────
+function stepperHtml(){
+  const labels=['Cliente','Documentos','Confirmar'];
+  return '<div class="stepper">'+labels.map((l,i)=>{
+    const n=i+1,c=n<st.step?'done':n===st.step?'active':'';
+    return `<div class="snode ${c}"><div class="bar"></div><div class="lbl">${n}. ${l}</div></div>`;
+  }).join('')+'</div>';
+}
+
+// ─── STEP 1 ──────────────────────────────────────────────────────────────────
+function renderNew(){
+  const el=document.getElementById('viewNew');if(!el)return;
+  if(spStatus==='error'){
+    el.innerHTML=`<div class="card" style="text-align:center;padding:40px;"><p style="color:var(--red);margin-bottom:14px;">No se pudo cargar tu información (clientes y reglas). Puede que el servidor esté despertando.</p><button class="btn primary" onclick="loadSpData()">Reintentar</button></div>`;
+    return;
+  }
+  if(!spData){
+    el.innerHTML=`<div class="card"><p style="color:var(--muted);">Cargando tu información… la primera vez del día puede tardar hasta 1 minuto.</p></div>`;
+    return;
+  }
+  let h=stepperHtml();
+  if(st.step===1)h+=renderStep1();
+  if(st.step===2)h+=renderStep2();
+  if(st.step===3)h+=renderStep3();
+  el.innerHTML=h;
+}
+function renderStep1(){
+  const clis=clientesFor(user.nombre);
+  const cur=clis.find(c=>c[2]===st.idCliente);
+  const socsPermitidas=sociedadesPermitidas(user.nombre);
+  if(st.sociedad&&!socsPermitidas.includes(st.sociedad)) st.sociedad='';
+  const sinMat=!!cur && !(cur[4]!=null && String(cur[4]).trim());
+  const sinRegla=!!cur && !reglaFor(cur[2]);
+  const puedeContinuar=st.idCliente&&st.tipoDoc&&st.sociedad&&!sinMat&&!sinRegla;
+  return `<div class="card">
+    <div class="card-head"><h2>Selecciona el cliente</h2><div class="sub">${esc(user.nombre)} · ${clis.length} clientes asignados</div></div>
+    <label class="fl">Cliente</label>
+    <select id="selCli" onchange="onCliChange(this.value)">
+      <option value="">— Selecciona un cliente —</option>
+      ${clis.map(c=>`<option value="${esc(c[2])}" ${c[2]===st.idCliente?'selected':''}>${esc(c[1])} · ${esc(c[2])}</option>`).join('')}
+    </select>
+    ${cur?`<div class="client-tag">${esc(cur[3])} <span class="cid">· ${esc(cur[2])}</span></div>`:''}
+    ${(sinMat||sinRegla)?`<div class="blocker show" style="margin-top:12px;">Este cliente todavía no tiene ${sinMat&&sinRegla?'MAT ni reglas de documentos configurados':sinMat?'MAT configurado':'reglas de documentos configuradas'}, por eso no se pueden enviar solicitudes para él. Ya avisamos a la administradora.</div>`:''}
+
+    <div class="grid2" style="margin-top:18px;">
+      <div>
+        <label class="fl">Tipo de documento</label>
+        <select id="selTipoDoc" onchange="onTipoDocChange(this.value)">
+          <option value="">— Selecciona —</option>
+          ${TIPOS_DOC.map(t=>`<option value="${esc(t)}" ${t===st.tipoDoc?'selected':''}>${esc(t)}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label class="fl">Sociedad emisora</label>
+        <select id="selSociedad" onchange="onSociedadChange(this.value)" ${socsPermitidas.length?'':'disabled'}>
+          <option value="">— Selecciona —</option>
+          ${socsPermitidas.map(s=>`<option value="${esc(s)}" ${s===st.sociedad?'selected':''}>${esc(s)}</option>`).join('')}
+        </select>
+        ${socsPermitidas.length?'':'<div style="color:var(--red);font-size:11.5px;margin-top:4px;">No tienes ninguna sociedad habilitada. Contacta al administrador.</div>'}
+      </div>
+    </div>
+
+    <div class="nav-row"><span></span>
+      <button class="btn primary" ${!puedeContinuar?'disabled':''} onclick="goStep(2)">Continuar →</button>
+    </div>
+  </div>`;
+}
+const clientesAvisados=new Set();
+async function avisarClienteIncompleto(id){
+  if(clientesAvisados.has(id)) return; clientesAvisados.add(id);
+  try{ await apiFetch(`${BACKEND_BASE}/avisos/cliente-incompleto`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id_cliente:id})}); }
+  catch(_e){ clientesAvisados.delete(id); }
+}
+function onCliChange(v){
+  st.idCliente=v; st.docs={}; renderNew();
+  const c=clientesFor(user.nombre).find(x=>x[2]===v);
+  if(c && (!(c[4]!=null && String(c[4]).trim()) || !reglaFor(v))) avisarClienteIncompleto(v);   // avisa a la administradora
+}
+function onTipoDocChange(v){st.tipoDoc=v;renderNew();}
+function onSociedadChange(v){st.sociedad=v;renderNew();}
+
+// ─── STEP 2 ──────────────────────────────────────────────────────────────────
+function renderStep2(){
+  const req=reqDocs(st.idCliente);
+  if(!req.length) return `<div class="card"><div class="card-head"><h2>Documentos</h2><div class="sub">Este cliente no tiene documentos obligatorios configurados.</div></div>
+    <div class="nav-row"><button class="btn ghost" onclick="goStep(1)">← Atrás</button><button class="btn primary" onclick="goStep(3)">Continuar →</button></div></div>`;
+  const allOk=req.every(dt=>st.docs[dt.key]?.validation?.ok);
+  const cr=clienteRow();
+  const nota=reglaFor(st.idCliente)?.[10];
+  const rows=req.map(dt=>{
+    const d=st.docs[dt.key];
+    let cls='doc-row',stamp='○',msg='Pendiente de carga';
+    if(d){
+      if(!d.validation.ok){cls+=' err';stamp='✕';msg=d.validation.msg;}
+      else if(d.validation.warn){cls+=' warn';stamp='⚠';msg=d.validation.msg;}
+      else{cls+=' ok';stamp='✓';msg=d.validation.msg;}
+    }
+    return `<div class="${cls}">
+      <div class="stamp">${stamp}</div>
+      <div class="doc-info">
+        <span class="dname">${esc(dt.label)}</span><span class="req-tag">Obligatorio</span>
+        <div class="status-msg">${d?esc(d.fileName)+' · '+d.sizeKB+' KB — '+esc(msg):msg}</div>
+      </div>
+      <div>
+        <input type="file" id="f_${dt.key}" accept="${dt.accept}" onchange="handleFile('${dt.key}',this.files[0])">
+        <button class="ubtn" onclick="document.getElementById('f_${dt.key}').click()">${d?'Reemplazar':'Subir archivo'}</button>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="card">
+    <div class="card-head"><h2>Documentos requeridos</h2><div class="sub">Todos los documentos marcados son obligatorios para enviar la solicitud.</div></div>
+    ${nota?`<div class="info-bar">📋 ${esc(nota)}</div>`:''}
+    <div class="manifest">
+      <div class="manifest-head"><span>${esc(cr?cr[1]:'')}</span><span>${esc(st.idCliente)}</span></div>
+      ${rows}
+    </div>
+    <label class="fl" style="margin-top:18px;">Notas adicionales (opcional)</label>
+    <textarea id="notasIn" oninput="st.notas=this.value" placeholder="Indicaciones para el equipo de facturación...">${esc(st.notas)}</textarea>
+    <div class="blocker ${allOk?'':'show'}">Faltan documentos obligatorios o hay archivos con error. Corrige los marcados con ✕.</div>
+    <div class="nav-row">
+      <button class="btn ghost" onclick="goStep(1)">← Atrás</button>
+      <button class="btn primary" ${allOk?'':'disabled'} onclick="goStep(3)">Revisar y enviar →</button>
+    </div>
+  </div>`;
+}
+
+// ─── FILE VALIDATION ──────────────────────────────────────────────────────────
+function handleFile(key,file){
+  if(!file) return;
+  if(file.size>MAX_FILE){st.docs[key]={fileName:file.name,sizeKB:Math.round(file.size/1024),base64:null,validation:{ok:false,msg:'Archivo demasiado grande (máx. 1.8 MB).'}};renderNew();return;}
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    const b64=e.target.result;
+    const dt=DOC_TYPES.find(d=>d.key===key);
+    const sKB=Math.round(file.size/1024);
+    let v;
+    if(dt.kind==='xlsx') v=await validateXlsx(b64);
+    else if(dt.kind==='xlsx_gen') v=/\.(xlsx|xls)$/i.test(file.name)?{ok:true,msg:'Excel cargado'}:{ok:false,msg:'Debe ser .xlsx o .xls'};
+    else if(dt.kind==='pdf_kw') v=await validatePdfKw(file,b64,key);
+    else v={ok:true,msg:'Archivo cargado'};
+    st.docs[key]={fileName:file.name,sizeKB:sKB,base64:b64,validation:v,meta:v.meta||{}};
+    // Si se reemplaza la OC después de haber cargado la HES, re-valida la HES contra el nuevo N° de OC.
+    if(key==='OC'&&st.docs.HES?.base64){
+      const hesFile={name:st.docs.HES.fileName};
+      validatePdfKw(hesFile,st.docs.HES.base64,'HES').then(hv=>{
+        st.docs.HES.validation=hv; st.docs.HES.meta=hv.meta||{}; renderNew();
+      });
+    }
+    // Si se sube/reemplaza la OC o la HES después de la Plantilla, re-valida la Plantilla
+    // para comparar el N° de OC/HES de las Observaciones contra los PDF ya cargados.
+    if((key==='OC'||key==='HES')&&st.docs.Plantilla?.base64){
+      validateXlsx(st.docs.Plantilla.base64).then(pv=>{
+        st.docs.Plantilla.validation=pv; st.docs.Plantilla.meta=pv.meta||{}; renderNew();
+      });
+    }
+    renderNew();
+  };
+  reader.readAsDataURL(file);
+}
+
+// ─── VALIDACIÓN DE LA PLANTILLA "OF" (Orden de Facturación) ──────────────────
+// Direcciones de celda según PLANTILLA_EXCEL_PARA_CLIENTES_EXTERNOS.xlsx.
+// Cada celda de encabezado trae un texto de relleno ("RAZON SOCIAL DEL CLIENTE", etc.)
+// que el usuario debe reemplazar; si sigue igual, el campo NO fue completado.
+const OF_PLACEHOLDERS={
+  C6:'RAZON SOCIAL DEL CLIENTE',
+  C7:'RUC DEL CLEINTE',
+  C8:'DIRECCION DEL CLIENTE',
+  C9:'DIAS DE CREDITO DEL CLIENTE',
+  J5:'INCLUIR CEBE',
+  C13:'ENGAGEMENT',
+  D13:'DESCRIPCION DEL SERVICIO',
+  G21:'INCLUIR OC, HES.',
+  C22:'NOMBRE DEL USUARIO',
+};
+function ofCellStr(ws,addr){
+  const c=ws[addr];
+  if(!c||c.v===undefined||c.v===null) return '';
+  return String(c.v).trim();
+}
+function ofCellNum(ws,addr){
+  const c=ws[addr];
+  if(!c||c.v===undefined||c.v===null||c.v==='') return 0;
+  const n=Number(c.v);
+  return isNaN(n)?0:n;
+}
+function ofIsPlaceholder(ws,addr){
+  const val=ofCellStr(ws,addr);
+  const ph=OF_PLACEHOLDERS[addr];
+  return !val || (ph && normTxt(val)===normTxt(ph));
+}
+// Busca cualquier secuencia de 6 a 12 dígitos mencionada en un texto libre (p.ej. el
+// cuadro de Observaciones, donde el usuario escribe algo como "Aplica OC N° 4500886569").
+function extractOcNumbersMentioned(text){
+  if(!text) return [];
+  const matches=text.match(/\b[0-9]{6,12}\b/g)||[];
+  return [...new Set(matches)];
+}
+// Compara dos números tolerando que uno sea prefijo/sufijo del otro (p.ej. con o sin el
+// sufijo de posición "/20").
+function numMatch(a,b){
+  if(!a||!b) return false;
+  return a===b||a.includes(b)||b.includes(a);
+}
+// ¿El archivo tiene la estructura de la plantilla oficial? (no dependemos de un
+// texto libre como "Orden de Facturación" porque ese texto no existe en el archivo;
+// dependemos de las etiquetas fijas de las celdas.)
+function looksLikeOFTemplate(ws){
+  const b6=normTxt(ofCellStr(ws,'B6'));
+  const b7=normTxt(ofCellStr(ws,'B7'));
+  const d12=normTxt(ofCellStr(ws,'D12'));
+  const h12=normTxt(ofCellStr(ws,'H12'));
+  return b6.includes('RAZON SOCIAL')&&b7.includes('RUC')&&d12.includes('GLOSA')&&h12.includes('SUBTOTAL');
+}
+
+function validateOFTemplate(ws){
+  const faltantes=[];
+
+  if(ofIsPlaceholder(ws,'C6')) faltantes.push('Razón Social del cliente (celda C6)');
+  if(ofIsPlaceholder(ws,'C7')) faltantes.push('RUC del cliente (celda C7)');
+  if(ofIsPlaceholder(ws,'C8')) faltantes.push('Dirección del cliente (celda C8)');
+  if(ofIsPlaceholder(ws,'C9')) faltantes.push('Condición de pago (celda C9)');
+  if(ofIsPlaceholder(ws,'J5')) faltantes.push('Centro de Beneficio / CEBE (celda J5)');
+
+  // Detalle del servicio: filas 13 a 15 (según el rango de las fórmulas SUMA de la plantilla)
+  let filasValidas=0;
+  for(const row of [13,14,15]){
+    const glosa=ofCellStr(ws,'D'+row);
+    const glosaOk=glosa && normTxt(glosa)!==normTxt(OF_PLACEHOLDERS.D13);
+    const cant=ofCellNum(ws,'E'+row);
+    const precio=ofCellNum(ws,'G'+row);
+    if(glosaOk&&cant>0&&precio>0) filasValidas++;
+    else if(glosa||cant||precio){
+      // Fila iniciada pero incompleta (le falta algún dato)
+      const detalles=[];
+      if(!glosaOk) detalles.push('Glosa');
+      if(!(cant>0)) detalles.push('Cantidad');
+      if(!(precio>0)) detalles.push('Precio Unit.');
+      faltantes.push(`Fila ${row-12} del detalle incompleta — falta: ${detalles.join(', ')}`);
+    }
+  }
+  if(filasValidas===0&&!faltantes.some(f=>f.startsWith('Fila'))) faltantes.push('Detalle del servicio (Glosa, Cantidad y Precio Unit. — filas 13 a 15)');
+
+  const totalGeneral=ofCellNum(ws,'J17');
+  if(filasValidas>0&&!(totalGeneral>0)) faltantes.push('Total general (celda J17) — vuelve a guardar el Excel para recalcular las fórmulas');
+
+  if(ofIsPlaceholder(ws,'G21')) faltantes.push('Observaciones — debe indicar si aplica OC y/o HES (celda G21)');
+  if(ofIsPlaceholder(ws,'C22')) faltantes.push('Nombre de quien elabora (celda C22)');
+
+  if(faltantes.length){
+    return {ok:false,msg:`La plantilla está incompleta. Falta completar: ${faltantes.join(' · ')}.`};
+  }
+
+  if(!clienteMatches(ofCellStr(ws,'C6'))){
+    const cr=clienteRow();
+    return {ok:false,msg:`La Razón Social en la plantilla ("${ofCellStr(ws,'C6')}") no corresponde al cliente seleccionado "${cr?cr[1]:st.idCliente}". Verifica que estás subiendo la plantilla correcta.`};
+  }
+
+  const rs=ofCellStr(ws,'C6'),ruc=ofCellStr(ws,'C7');
+  const observaciones=ofCellStr(ws,'G21');
+  const obsNums=extractOcNumbersMentioned(observaciones);
+
+  // Validación cruzada: si el cliente requiere OC y/o HES (según sus reglas), el N° que se
+  // menciona en Observaciones debe coincidir con el N° real leído de los PDF ya cargados.
+  const reqKeys=(reqDocs(st.idCliente)||[]).map(d=>d.key);
+  const requiereOC=reqKeys.includes('OC');
+  const requiereHES=reqKeys.includes('HES');
+  const avisos=[];
+
+  if(requiereOC){
+    if(!obsNums.length){
+      avisos.push('Las Observaciones no mencionan ningún N° de OC, y este cliente sí requiere OC.');
+    }else{
+      const ocPdfNum=st.docs?.OC?.meta?.ocNumber||null;
+      if(ocPdfNum&&!obsNums.some(n=>numMatch(n,ocPdfNum))){
+        avisos.push(`El N° de OC indicado en Observaciones (${obsNums.join(', ')}) no coincide con el de la OC cargada (${ocPdfNum}).`);
+      }
+    }
+  }
+  if(requiereHES){
+    const hesPdfNum=st.docs?.HES?.meta?.ocNumeroEnHes||null;
+    if(hesPdfNum&&obsNums.length&&!obsNums.some(n=>numMatch(n,hesPdfNum))){
+      avisos.push(`El N° de pedido de la HES cargada (${hesPdfNum}) no coincide con lo indicado en Observaciones (${obsNums.join(', ')}).`);
+    }
+  }
+
+  // Subtotal sin IGV: suma de la columna SUBTOTAL (H13:H15); si una fila no la trae calculada, usa Cantidad × Precio Unit.
+  let subtotalSinIgv=0;
+  for(const row of [13,14,15]){
+    const h=ofCellNum(ws,'H'+row), e=ofCellNum(ws,'E'+row), g=ofCellNum(ws,'G'+row);
+    subtotalSinIgv+= h>0 ? h : (e>0&&g>0 ? e*g : 0);
+  }
+  const meta={razonSocial:rs,ruc,total:totalGeneral,subtotal:Math.round(subtotalSinIgv*100)/100,obsOcNumeros:obsNums};
+  if(avisos.length){
+    return {ok:true,warn:true,meta,msg:`✓ Plantilla completa · ${rs} · RUC: ${ruc} · Total: S/ ${totalGeneral.toFixed(2)}. ⚠ ${avisos.join(' ')}`};
+  }
+  return {ok:true,meta,msg:`✓ Plantilla completa y válida · ${rs} · RUC: ${ruc} · Total: S/ ${totalGeneral.toFixed(2)}`};
+}
+
+// ─── Plantilla oficial (se reconocen los dos diseños oficiales) ───────────────
+// "v2" = plantilla vigente (Panorama): datos en C5..C8, crédito en D8, líneas en filas 12 a 14, totales en fila 16.
+// "v1" = plantilla oficial anterior: datos en C4..C7, crédito en D7, líneas en filas 10 a 12, totales en fila 14.
+const OF_LAYOUTS={
+  v2:{id:'v2',razon:'C5',ruc:'C6',dir:'C7',dias:'C8',credito:'D8',cebe:'K5',engHdr:'K7',filas:[12,13,14],sub:'I16',igv:'J16',total:'K16',nombre:'C17',
+      etiquetas:{B5:'RAZON SOCIAL',B6:'RUC',B8:'CONDICION',D11:'GLOSA',I11:'SUBTOTAL'}, codigoCredito:d=>'D'+d},
+  v1:{id:'v1',razon:'C4',ruc:'C5',dir:'C6',dias:'C7',credito:'D7',cebe:'K4',engHdr:'K6',filas:[10,11,12],sub:'I14',igv:'J14',total:'K14',nombre:'C15',
+      etiquetas:{B4:'RAZON SOCIAL',B5:'RUC',B7:'CONDICION',D9:'GLOSA',I9:'SUBTOTAL'}, codigoCredito:d=>'D0'+d}
+};
+function detectarLayout(ws){
+  for(const L of [OF_LAYOUTS.v2,OF_LAYOUTS.v1]){
+    if(Object.entries(L.etiquetas).every(([addr,txt])=>normTxt(ofCellStr(ws,addr)).includes(txt))) return L;
+  }
+  return null;
+}
+// Textos de ejemplo que trae la plantilla (si siguen igual, el campo no fue completado)
+const OF_EJEMPLOS={razon:'RAZON SOCIAL DEL CLIENTE',ruc:'RUC DEL CLIENTE',dir:'DIRECCION DEL CLIENTE',dias:'DIAS DE CREDITO',cebe:'INCLUIR CEBE',
+  glosa:'DESCRIPCION DEL SERVICIO',nombre:'NOMBRE DEL USUARIO',eng:'ENGAGEMENT',engHdr:'INCLUIR ENGAGEMENT',glosa2:'INCLUIR OC HES'};
+// Texto que el usuario escribió de verdad (vacío si dejó el texto de ejemplo)
+function textoReal(v,ph){ const t=String(v||'').trim(); return (!t||normTxt(t)===normTxt(ph))?'':t; }
+function valorCampo(ws,L,rol){ return textoReal(ofCellStr(ws,L[rol]),OF_EJEMPLOS[rol]); }
+// N.º(s) de OC escritos en la columna "Incluir OC, Hes." (por ejemplo "OC 4500886569 / HES 5000123")
+function extraerOcDeTexto(t){
+  const txt=String(t||''), out=[];
+  const reOC=/\bO\.?\s?C\.?\s*(?:N[°ºo]\.?\s*)?[:#\-]?\s*(\d{6,12})/gi; let m;
+  while((m=reOC.exec(txt))) out.push(m[1]);
+  if(!out.length){ const sap=txt.match(/\b45\d{8,9}\b/g); if(sap) out.push(...sap); }
+  if(!out.length && !/HES/i.test(txt)){ const gen=txt.match(/\b\d{6,12}\b/g); if(gen) out.push(gen[0]); }
+  return out;
+}
+// Moneda escrita por el usuario → 'PEN' / 'USD' (o null si no se reconoce)
+function normMoneda(v){
+  const t=String(v||'').trim().toUpperCase(); if(!t) return '';
+  const n=normTxt(t);
+  if(['PEN','SOL','SOLES','NUEVO SOL','NUEVOS SOLES','S','SOLES PERUANOS'].includes(n)||t==='S/'||t==='S/.') return 'PEN';
+  if(['USD','US','DOLAR','DOLARES','DOLARES AMERICANOS','DOLAR AMERICANO','US DOLARES'].includes(n)||t==='$'||t==='US$') return 'USD';
+  return null;
+}
+function simboloMoneda(m){ return m==='USD'?'US$':'S/'; }
+// Lo que dice la celda del crédito (D8 en la plantilla vigente). Si el archivo no trae el valor calculado, se arma como la fórmula.
+function creditoDesdeHoja(ws,L){
+  const c=ofCellStr(ws,L.credito);
+  if(c && !normTxt(c).includes('DIAS DE CREDITO')) return c;
+  return L.codigoCredito(ofCellStr(ws,L.dias));
+}
+function validateOFOfficial(ws,L){
+  const falta=[];
+  const celda=rol=>`celda ${L[rol]}`;
+  if(!valorCampo(ws,L,'razon')) falta.push(`Razón Social del cliente (${celda('razon')})`);
+  if(!valorCampo(ws,L,'ruc')) falta.push(`RUC del cliente (${celda('ruc')})`);
+  if(!valorCampo(ws,L,'dir')) falta.push(`Dirección del cliente (${celda('dir')})`);
+  const dias=ofCellStr(ws,L.dias);
+  if(!valorCampo(ws,L,'dias')) falta.push(`Días de crédito (${celda('dias')})`);
+  else if(!/^\d{1,3}$/.test(dias)) falta.push(`Días de crédito (${celda('dias')}): escribe solo el número de días, por ejemplo 30`);
+  if(!valorCampo(ws,L,'cebe')) falta.push(`Centro de Beneficio / CEBE (${celda('cebe')})`);
+
+  let validas=0; const monedas=new Set(); const lineas=[]; const ocSet=new Set();
+  const engCabecera=valorCampo(ws,L,'engHdr');
+  L.filas.forEach((row,i)=>{
+    const glosa=textoReal(ofCellStr(ws,'D'+row),OF_EJEMPLOS.glosa);
+    const cant=ofCellNum(ws,'F'+row), precio=ofCellNum(ws,'H'+row), monRaw=ofCellStr(ws,'G'+row), mon=normMoneda(monRaw);
+    if(glosa&&cant>0&&precio>0&&mon){
+      validas++; monedas.add(mon);
+      const glosa2=textoReal(ofCellStr(ws,'E'+row),OF_EJEMPLOS.glosa2);
+      extraerOcDeTexto(glosa2).forEach(n=>ocSet.add(n));
+      lineas.push({n:i+1, eng:textoReal(ofCellStr(ws,'C'+row),OF_EJEMPLOS.eng)||engCabecera, glosa, glosa2, cantidad:cant, moneda:mon, precio,
+                   subtotal:Math.round((ofCellNum(ws,'I'+row)||cant*precio)*100)/100});
+    }else if(glosa||cant||precio||monRaw){
+      const d=[];
+      if(!glosa) d.push('Glosa');
+      if(!(cant>0)) d.push('Cantidad');
+      if(!monRaw) d.push('Moneda'); else if(!mon) d.push('Moneda (escribe PEN o USD)');
+      if(!(precio>0)) d.push('Precio Unit.');
+      falta.push(`Línea ${i+1} incompleta — falta: ${d.join(', ')}`);
+    }
+  });
+  if(validas===0&&!falta.some(f=>f.startsWith('Línea'))) falta.push(`Detalle del servicio (Glosa, Cantidad, Moneda y Precio Unit. — filas ${L.filas[0]} a ${L.filas[L.filas.length-1]})`);
+  if(monedas.size>1) falta.push('Todas las líneas deben tener la misma moneda (cada factura se emite en una sola)');
+  if(lineas.some(l=>!l.eng)) falta.push(`Engagement (columna ENG de cada línea o ${celda('engHdr')})`);
+  const subtotal=ofCellNum(ws,L.sub), igv=ofCellNum(ws,L.igv), total=ofCellNum(ws,L.total);
+  if(validas>0&&!(total>0)) falta.push(`Total (${celda('total')}): vuelve a guardar el Excel para que se recalculen las fórmulas`);
+  if(!valorCampo(ws,L,'nombre')) falta.push(`Nombre de quien elabora (${celda('nombre')})`);
+  if(falta.length) return {ok:false,msg:`La plantilla está incompleta. Falta completar: ${falta.join(' · ')}.`};
+
+  const rs=ofCellStr(ws,L.razon), ruc=ofCellStr(ws,L.ruc);
+  if(!clienteMatches(rs)){
+    const cr=clienteRow();
+    return {ok:false,msg:`La Razón Social en la plantilla ("${rs}") no corresponde al cliente seleccionado "${cr?cr[1]:st.idCliente}". Verifica que estás subiendo la plantilla correcta.`};
+  }
+  const moneda=[...monedas][0]||'PEN', credito=creditoDesdeHoja(ws,L);
+
+  // Avisos que no bloquean: lo que el usuario escribió en "Incluir OC, Hes." frente a la OC / HES cargadas.
+  const obsNums=extractOcNumbersMentioned(L.filas.map(r=>ofCellStr(ws,'E'+r)).join(' '));
+  const reqKeys=(reqDocs(st.idCliente)||[]).map(d=>d.key), avisos=[];
+  if(reqKeys.includes('OC')){
+    const ocPdfNum=st.docs?.OC?.meta?.ocNumber||null;
+    if(!obsNums.length) avisos.push('La columna "Incluir OC, Hes." no menciona ningún N° de OC, y este cliente sí requiere OC.');
+    else if(ocPdfNum&&!obsNums.some(n=>numMatch(n,ocPdfNum))) avisos.push(`El N° de OC escrito en la plantilla (${obsNums.join(', ')}) no coincide con el de la OC cargada (${ocPdfNum}).`);
+  }
+  if(reqKeys.includes('HES')){
+    const hesPdfNum=st.docs?.HES?.meta?.ocNumeroEnHes||null;
+    if(hesPdfNum&&obsNums.length&&!obsNums.some(n=>numMatch(n,hesPdfNum))) avisos.push(`El N° de pedido de la HES cargada (${hesPdfNum}) no coincide con lo escrito en la plantilla (${obsNums.join(', ')}).`);
+  }
+  const meta={razonSocial:rs,ruc,total,subtotal,igv,moneda,credito,obsOcNumeros:obsNums,lineas,cebe:ofCellStr(ws,L.cebe),ocNumeros:[...ocSet],diseno:L.id,celdaCredito:L.credito};
+  const base=`✓ Plantilla completa y válida · ${rs} · RUC: ${ruc} · Crédito: ${credito} · Total: ${simboloMoneda(moneda)} ${total.toFixed(2)}`;
+  return avisos.length?{ok:true,warn:true,meta,msg:`${base}. ⚠ ${avisos.join(' ')}`}:{ok:true,meta,msg:base};
+}
+
+async function validateXlsx(b64){
+  try{
+    const wb=XLSX.read(b64.split(',')[1],{type:'base64'});
+    if(!wb.SheetNames?.length) return {ok:false,msg:'Excel vacío o ilegible.'};
+    const ws=wb.Sheets[wb.SheetNames[0]];
+
+    const diseno=detectarLayout(ws);
+    if(diseno) return validateOFOfficial(ws,diseno);
+    if(looksLikeOFTemplate(ws)) return validateOFTemplate(ws);   // diseño anterior
+
+    // Excel genérico (no es la plantilla OF) — se exige que tenga varias filas de datos reales
+    // y que el cliente seleccionado aparezca en el contenido.
+    const allRows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    const flat=allRows.flat().map(c=>String(c));
+    const nonEmpty=allRows.filter(r=>r.some(c=>String(c).trim()!==''));
+    if(nonEmpty.length<3) return {ok:false,msg:'El Excel parece incompleto — se detectaron muy pocas filas con datos. Verifica que contenga toda la información requerida.'};
+    if(!clienteMatches(flat.join(' '))){
+      const cr=clienteRow();
+      return {ok:false,msg:`Este Excel no menciona al cliente seleccionado "${cr?cr[1]:st.idCliente}". Verifica que sea el archivo correcto — parece corresponder a otro cliente.`};
+    }
+    return {ok:true,msg:`Excel cargado y coincide con el cliente — ${nonEmpty.length} filas detectadas (hoja "${wb.SheetNames[0]}").`};
+  }catch(e){return {ok:false,msg:'No se pudo leer el Excel. Verifica que no esté dañado o en formato .xls antiguo — guárdalo como .xlsx e intenta de nuevo.'};}}
+
+// ─── EXTRACCIÓN REAL DE TEXTO PDF (pdf.js) ────────────────────────────────────
+// El PDF comprime el texto (FlateDecode) casi siempre; leer los bytes crudos
+// (como hacía la versión anterior) casi nunca encuentra texto legible salvo en
+// PDFs muy simples. pdf.js decodifica los streams de verdad, página por página.
+async function extractPdfText(arr){
+  if(typeof pdfjsLib==='undefined') return {text:'',pages:0,method:'none'};
+  try{
+    const loadingTask=pdfjsLib.getDocument({data:arr});
+    const pdf=await loadingTask.promise;
+    let full='';
+    const maxPages=Math.min(pdf.numPages,15); // suficiente para OC/HES; evita cargas larguísimas
+    for(let p=1;p<=maxPages;p++){
+      const page=await pdf.getPage(p);
+      const content=await page.getTextContent();
+      full+=content.items.map(it=>it.str).join(' ')+'\n';
+    }
+    return {text:full,pages:pdf.numPages,method:'pdfjs'};
+  }catch(e){
+    return {text:'',pages:0,method:'error',error:e};
+  }
+}
+// Respaldo simple: busca cadenas de texto sin comprimir "(texto)" en los bytes crudos.
+// Solo sirve para PDFs muy antiguos/simples; se usa únicamente si pdf.js falla.
+function extractPdfTextFallback(arr){
+  const raw=new TextDecoder('utf-8',{fatal:false}).decode(arr);
+  const matches=raw.match(/\(((?:[^()\\]|\\.)*)\)/g)||[];
+  return matches.map(m=>m.slice(1,-1).replace(/\\(.)/g,'$1')).join(' ');
+}
+
+// ─── EXTRACCIÓN DE N° OC E IMPORTE SIN IGV ────────────────────────────────────
+// Importante: el token capturado debe ser una secuencia de DÍGITOS (6-12), no
+// cualquier palabra alfabética — antes esto capturaba por error palabras como
+// "fecha" o "indique" que aparecían justo después de la etiqueta, por estar
+// en la misma celda/columna de la tabla del PDF.
+function extractOcNumber(text){
+  const patterns=[
+    /n[uú]mero\s*de\s*orden\.?[^0-9]{0,15}([0-9]{6,12})/i,
+    /\bn[°ºo]\.?\s*(?:de\s*)?o\.?c\.?[^0-9]{0,15}([0-9]{6,12})/i,
+    /\bnro\.?\s*o\.?c\.?[^0-9]{0,15}([0-9]{6,12})/i,
+    /\bo\.?c\.?\s*n[°ºo]?\.?[^0-9]{0,15}([0-9]{6,12})/i,
+    /\bpo\s*(?:number|no\.?|#)[^0-9]{0,15}([0-9]{6,12})/i,
+    /\b(45\d{8,9})\b/, // numeración típica SAP para OC — muy confiable por sí sola
+    /(?:orden\s*de\s*compra|purchase\s*order)[^0-9]{0,25}([0-9]{6,12})/i,
+  ];
+  for(const p of patterns){
+    const m=text.match(p);
+    if(m&&m[1]) return m[1].trim();
+  }
+  // Último recurso: códigos alfanuméricos tipo "OC-2024-00123" (sin ser solo dígitos)
+  const m2=text.match(/\bo\.?c\.?\s*n[°ºo]?\.?\s*[:\-]?\s*([A-Z][A-Z0-9\-\/]{3,20})/i);
+  if(m2&&m2[1]) return m2[1].trim().replace(/[.\-\/]+$/,'');
+  return null;
+}
+// La HES (SAP) suele traer el N° de OC bajo "Posición pedido/Fecha" en vez de "orden de
+// compra" — se lee de forma específica para no depender de que la OC ya esté cargada.
+function extractOcNumberFromHES(text){
+  const patterns=[
+    /posici[oó]n\s*pedido[^0-9]{0,15}([0-9]{6,12})/i,
+    /pedido\s*\/?\s*fecha[^0-9]{0,15}([0-9]{6,12})/i,
+    /n[uú]mero\s*de\s*orden\.?[^0-9]{0,15}([0-9]{6,12})/i,
+    /\b(45\d{8,9})\b/,
+  ];
+  for(const p of patterns){
+    const m=text.match(p);
+    if(m&&m[1]) return m[1].trim();
+  }
+  return null;
+}
+function extractImporteSinIgv(text){
+  const patterns=[
+    /(?:importe\s*sin\s*igv|valor\s*de?\s*venta|sub\s*-?\s*total(?:\s*sin\s*igv)?|base\s*imponible)\D{0,10}?([0-9][0-9.,]*[0-9]|[0-9])/i,
+  ];
+  for(const p of patterns){
+    const m=text.match(p);
+    if(m&&m[1]) return m[1].trim();
+  }
+  return null;
+}
+// Compara un N° de OC contra el texto de la HES tolerando separadores distintos
+// (p.ej. "4500886569/20" en la HES sí debe coincidir con "4500886569" de la OC).
+function ocNumberAppearsIn(ocNumber,text){
+  if(!ocNumber) return null; // sin dato para comparar
+  const digitsOnly=ocNumber.replace(/[^A-Z0-9]/gi,'');
+  if(digitsOnly.length<4) return null;
+  const normText=text.replace(/[^A-Z0-9]/gi,'').toUpperCase();
+  return normText.includes(digitsOnly.toUpperCase());
+}
+
+
+async function validatePdfKw(file,b64,key){
+  const isPdf=/\.pdf$/i.test(file.name);
+  const isXls=/\.(xlsx|xls)$/i.test(file.name);
+  if(!isPdf&&!isXls) return {ok:false,msg:'Formato no válido. Se esperaba PDF.'};
+  if(isPdf){
+    try{
+      const arr=Uint8Array.from(atob(b64.split(',')[1]),c=>c.charCodeAt(0));
+      const hdr=new TextDecoder('utf-8',{fatal:false}).decode(arr.slice(0,5));
+      if(!hdr.startsWith('%PDF')) return {ok:false,msg:'El archivo no es un PDF válido.'};
+
+      let {text:txt}=await extractPdfText(arr);
+      let usedFallback=false;
+      if(!txt||txt.trim().length<10){ txt=extractPdfTextFallback(arr); usedFallback=true; }
+      const hasText=txt.trim().length>15;
+
+      const kws=KW_MAP[key]||[];
+      const lowerTxt=txt.toLowerCase();
+      const foundKw=kws.find(k=>lowerTxt.includes(k));
+
+      // La HES casi nunca menciona el nombre del cliente, pero sí debe traer el N° de OC —
+      // así que para HES no exigimos coincidencia de cliente por texto; validamos por N° de OC.
+      if(key!=='HES'&&hasText&&!clienteMatches(txt)){
+        const cr=clienteRow();
+        return {ok:false,msg:`Este documento no menciona al cliente seleccionado "${cr?cr[1]:st.idCliente}" — parece corresponder a otro cliente. Verifica el archivo.${usedFallback?' (No se pudo extraer texto completo del PDF; revisa visualmente si estás seguro de que sí corresponde.)':''}`};
+      }
+
+      let meta={};
+      let extra='';
+      if(key==='OC'){
+        const ocNum=extractOcNumber(txt);
+        const importe=extractImporteSinIgv(txt);
+        meta={ocNumber:ocNum,importeSinIgv:importe};
+        if(ocNum) extra+=` · N° OC: ${ocNum}`;
+        if(importe) extra+=` · Importe s/IGV: S/ ${importe}`;
+      }
+      if(key==='HES'){
+        const ocPrevia=st.docs?.OC?.meta?.ocNumber;
+        const ocEnHes=hasText?extractOcNumberFromHES(txt):null; // lectura directa desde la propia HES (p.ej. "Posición pedido")
+
+        if(!hasText){
+          meta={hesRelacionaOc:null,ocNumeroEnHes:null};
+          return {ok:true,meta,msg:ocPrevia?`PDF cargado (escaneado o sin texto extraíble) — verifica visualmente que el N° de OC coincida con ${ocPrevia}.`:'PDF cargado (escaneado o sin texto extraíble) — verifica visualmente el N° de pedido/OC.'};
+        }
+        if(!ocPrevia){
+          // Aún no se cargó la OC (o no se pudo extraer su número) — no hay con qué comparar,
+          // pero igual mostramos lo que la HES trae para que el usuario lo verifique.
+          meta={hesRelacionaOc:null,ocNumeroEnHes:ocEnHes};
+          return {ok:true,meta,msg:ocEnHes
+            ?`PDF cargado — se detectó el N° de pedido ${ocEnHes} en la HES. Aún no hay una OC cargada para comparar; se validará automáticamente cuando la subas.`
+            :`PDF cargado. Aún no hay un N° de OC detectado para comparar — súbelo y esta HES se re-validará automáticamente.`};
+        }
+        // Doble verificación: 1) el N° de la OC aparece en cualquier parte del texto de la HES,
+        // 2) el N° leído específicamente del campo "Posición pedido" de la HES coincide con la OC.
+        const apareceEnTexto=ocNumberAppearsIn(ocPrevia,txt);
+        const coincideCampo=ocEnHes&&ocNumberAppearsIn(ocPrevia,ocEnHes);
+        const coincide=!!(apareceEnTexto||coincideCampo);
+        meta={hesRelacionaOc:coincide,ocNumeroEnHes:ocEnHes};
+        if(coincide){
+          return {ok:true,meta,msg:`✓ HES válida — el N° de OC ${ocPrevia} coincide con esta HES${ocEnHes?` (Posición pedido: ${ocEnHes})`:''}.`};
+        }else{
+          return {ok:true,warn:true,meta,
+            msg:`⚠ El N° de OC (${ocPrevia}) no aparece en esta HES${ocEnHes?` — la HES muestra el pedido ${ocEnHes}`:''}. Verifica que ambos documentos correspondan a la misma orden.`};
+        }
+      }
+
+      if(!hasText){
+        return {ok:true,meta,msg:`PDF cargado${usedFallback?' (escaneado o sin texto extraíble':' (sin texto detectable'} — verifica visualmente que sea el documento y cliente correctos).`};
+      }
+      if(foundKw) return {ok:true,meta,msg:`✓ PDF válido — se detectó "${foundKw}" y coincide con el cliente${extra}.`};
+      return {ok:true,meta,msg:`PDF cargado y coincide con el cliente. No se detectaron palabras clave del tipo de documento — verifica visualmente que sea el documento correcto${extra}.`};
+    }catch(e){return {ok:false,msg:'No se pudo leer el PDF: '+(e?.message||e)};}
+  }
+  try{
+    const wb=XLSX.read(b64.split(',')[1],{type:'base64'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const flat=XLSX.utils.sheet_to_json(ws,{header:1,defval:''}).flat().map(c=>String(c));
+    if(!clienteMatches(flat.join(' '))){
+      const cr=clienteRow();
+      return {ok:false,msg:`Este Excel no menciona al cliente seleccionado "${cr?cr[1]:st.idCliente}" — parece corresponder a otro cliente. Verifica el archivo.`};
+    }
+    if(key==='OC'){
+      const ocNum=extractOcNumber(flat.join(' '));
+      return {ok:true,meta:{ocNumber:ocNum,importeSinIgv:null},msg:`Archivo Excel cargado y coincide con el cliente${ocNum?` · N° OC: ${ocNum}`:''}.`};
+    }
+    return {ok:true,msg:'Archivo Excel cargado y coincide con el cliente.'};
+  }catch(e){return {ok:true,msg:'Archivo Excel cargado. No se pudo verificar automáticamente el cliente — revísalo manualmente.'};}
+}
+
+// ─── STEP 3 ──────────────────────────────────────────────────────────────────
+// ─── DATOS AUTOMÁTICOS DEL PASO 3 (nada de esto se escribe a mano) ───────────
+// true = se muestran las aclaraciones pequeñas ("De tu lista de clientes", etc.) fuera del recuadro; false = solo nombre y recuadro.
+// Los mensajes de error siempre se muestran.
+let MOSTRAR_ACLARACIONES=true;
+function datosAutomaticos(){
+  const cr=clienteRow(), claves=reqDocs(st.idCliente).map(d=>d.key);
+  const requiereOC=claves.includes('OC'), requierePlantilla=claves.includes('Plantilla');
+  const mat=(cr&&cr[4]!=null)?String(cr[4]).trim():'';
+  const pm=st.docs?.Plantilla?.meta||null;
+  const credito=String(pm?.credito||'').trim();
+  const ocExcel=(pm?.ocNumeros||[]).join(' / ');
+  const ocPdf=String(st.docs?.OC?.meta?.ocNumber||'').trim();
+  const bloqueos=[]; const d={idCliente:st.idCliente};
+  if(!requiereOC){ d.oc='SIN OC'; d.ocTipo='sin'; d.ocAclara='Este cliente no usa orden de compra'; }
+  else if(requierePlantilla){
+    if(ocExcel){ d.oc=ocExcel; d.ocTipo='ok'; d.ocAclara='De la columna "Incluir OC, Hes." de tu plantilla'; }
+    else{ d.oc='—'; d.ocTipo='err'; d.ocAclara='⛔ No se encontró un N.º de OC en tu plantilla';
+      bloqueos.push('No se puede enviar: escribe el N.º de OC en la columna "Incluir OC, Hes." de tu plantilla (por ejemplo "OC 4500886569") y vuelve a subirla. Este dato no se puede escribir a mano en el portal.'); }
+  }else{   // cliente con OC pero sin plantilla: el N.º se toma de la Orden de Compra
+    if(ocPdf){ d.oc=ocPdf; d.ocTipo='ok'; d.ocAclara='De la Orden de Compra que subiste'; }
+    else{ d.oc='—'; d.ocTipo='err'; d.ocAclara='⛔ La OC que subiste no trae un número que el portal pueda identificar';
+      bloqueos.push('No se puede enviar: sube de nuevo una OC con texto legible. Este dato no se puede escribir a mano.'); }
+  }
+  if(!requierePlantilla){ d.cred='No aplica'; d.credTipo='sin'; d.credAclara='Este cliente no usa plantilla'; }
+  else if(credito){ d.cred=credito; d.credTipo='ok'; d.credAclara=`Lo que dice la celda ${pm?.celdaCredito||'D8'} de tu plantilla`; }
+  else{ d.cred='—'; d.credTipo='err'; d.credAclara=`⛔ No se encontró el crédito (celda ${pm?.celdaCredito||'D8'}) en tu plantilla`; bloqueos.push(`No se pudo leer el crédito (celda ${pm?.celdaCredito||'D8'}) de la plantilla. Vuelve a subirla.`); }
+  if(mat){ d.matTxt=mat; d.matTipo='ok'; d.matAclara='De la ficha del cliente'; }
+  else{ d.matTxt='—'; d.matTipo='err'; d.matAclara='⛔ Este cliente no tiene MAT en el sistema'; bloqueos.push('Este cliente todavía no tiene MAT configurado. Se avisó a la administradora; no se puede enviar hasta que lo configure.'); }
+  if(!reglaFor(st.idCliente)) bloqueos.push('Este cliente todavía no tiene reglas de documentos configuradas. Se avisó a la administradora; no se puede enviar hasta que las configure.');
+  return Object.assign(d,{ocValor:requiereOC?(d.ocTipo==='ok'?d.oc:''):'SIN OC',creditoValor:requierePlantilla?credito:'',
+          lineas:pm?.lineas||[],cebe:pm?.cebe||'',moneda:pm?.moneda||'PEN',subtotal:pm?.subtotal,igv:pm?.igv,total:pm?.total,bloqueos});
+}
+function fmtNum(n){ return Number(n).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+// Nombre del dato a la izquierda (fuera), recuadro SOLO con el dato, aclaración a la derecha (fuera)
+function filaDato(lab,valor,tipo,aclara){
+  const cap=(MOSTRAR_ACLARACIONES||tipo==='err')?aclara:'';
+  return `<div class="lab">🔒 ${lab}:</div><div class="box ${tipo==='sin'?'sin':tipo==='err'?'err':''}">${esc(valor)}</div><div class="cap ${tipo==='err'?'err':''}">${esc(cap)}</div>`;
+}
+function bloqueAutomatico(d){
+  const hayTabla=d.lineas.length>0;
+  const tabla=hayTabla?`<table class="mt">
+      <thead><tr><th>MAT</th><th>Cantidad</th><th>Descripción</th><th aria-label="Continuación de la descripción"></th><th style="text-align:right;">Importe</th><th>Moneda</th><th>Engagement</th><th>CEBE</th></tr></thead>
+      <tbody>${d.lineas.map(l=>`<tr>
+        <td class="m ${d.matTipo==='err'?'v':''}">${esc(d.matTxt)}</td>
+        <td>${esc(l.cantidad)}</td>
+        <td>${esc(l.glosa)}</td>
+        <td>${esc(l.glosa2)}</td>
+        <td class="r">${fmtNum(l.subtotal)}</td>
+        <td class="m">${esc(l.moneda)}</td>
+        <td class="m">${esc(l.eng)}</td>
+        <td class="m">${esc(d.cebe)}</td></tr>`).join('')}</tbody></table>
+    ${d.total>0?`<div class="tot">Subtotal <b>${fmtNum(d.subtotal)}</b> · IGV 18% <b>${fmtNum(d.igv)}</b> · Total <b>${fmtNum(d.total)} ${esc(d.moneda)}</b></div>`:''}`:'';
+  return `<div class="pnl">
+    <div class="pnl-h"><span class="t">Datos detectados de la orden</span><span class="chip">AUTOMÁTICOS · NO EDITABLES</span></div>
+    <div class="f3">
+      ${filaDato('ID cliente',d.idCliente,'ok','De tu lista de clientes')}
+      ${filaDato('N° OC',d.oc,d.ocTipo,d.ocAclara)}
+      ${filaDato('Crédito',d.cred,d.credTipo,d.credAclara)}
+      ${hayTabla?'':filaDato('MAT',d.matTxt,d.matTipo,d.matAclara)}
+    </div>
+    ${tabla}
+    <div class="nota ${d.bloqueos.length?'err':''}">${d.bloqueos.length?d.bloqueos.map(b=>'⛔ '+esc(b)).join('<br>'):'Estos datos los pone el portal y no se pueden modificar. Si algo no coincide, corrige tu plantilla y vuelve a subirla.'}</div>
+  </div>`;
+}
+
+function renderStep3(){
+  const req=reqDocs(st.idCliente),cr=clienteRow(),da=datosAutomaticos();
+  return `<div class="card">
+    <div class="card-head"><h2>Revisa antes de enviar</h2><div class="sub">Confirma que todo es correcto antes de registrar la solicitud.</div></div>
+    <div class="grid2">
+      <div><label class="fl">Solicitante</label>${esc(user.nombre)}</div>
+      <div><label class="fl">Empresa</label>${esc(cr?cr[3]:'—')}</div>
+    </div>
+    <div class="grid2" style="margin-top:14px;">
+      <div><label class="fl">Tipo de documento</label>${esc(st.tipoDoc)}</div>
+      <div><label class="fl">Sociedad emisora</label>${esc(st.sociedad)}</div>
+    </div>
+    <div style="margin-top:14px;"><label class="fl">Cliente</label>${esc(cr?cr[1]:'—')} <span style="color:var(--muted);font-family:var(--mono);font-size:11px;">(${esc(st.idCliente)})</span></div>
+    <div style="margin-top:14px;"><label class="fl">Documentos adjuntos</label>${req.map(dt=>`<span class="doc-pill">${esc(dt.label)}</span>`).join('')}</div>
+    ${bloqueAutomatico(da)}
+    ${st.notas?`<div style="margin-top:14px;"><label class="fl">Notas</label>${esc(st.notas)}</div>`:''}
+    <div class="err-msg" id="submitErr"></div>
+    <div class="nav-row">
+      <button class="btn ghost" onclick="goStep(2)">← Editar</button>
+      <button class="btn verde" id="btnSend" onclick="submit()" ${da.bloqueos.length?'disabled style="background:#aaa;border-color:#aaa;color:#fff;cursor:not-allowed;"':''}>✓ Enviar solicitud</button>
+    </div>
+  </div>`;
+}
+function goStep(n){st.step=n;st.pendingId=null;renderNew();}
+
+// ─── SUBMIT ───────────────────────────────────────────────────────────────────
+async function submit(){
+  const btn=document.getElementById('btnSend');
+  const errBox=document.getElementById('submitErr');
+  if(errBox){errBox.classList.remove('show');errBox.textContent='';}
+  btn.disabled=true;btn.textContent='Enviando… (puede tardar hasta 1 minuto)';
+  // Mismo código en cada reintento del mismo envío: así el servidor no duplica el registro.
+  if(!st.pendingId) st.pendingId='SOL-'+Date.now().toString(36).toUpperCase();
+  const id=st.pendingId;
+  const cr=clienteRow(),req=reqDocs(st.idCliente),da=datosAutomaticos();
+  if(da.bloqueos.length){
+    btn.disabled=false; btn.textContent='✓ Enviar solicitud';
+    if(errBox){ errBox.textContent=da.bloqueos.join(' '); errBox.classList.add('show'); }
+    return;
+  }
+  const record={id,fecha:new Date().toISOString(),solicitante:user.nombre,correo:user.correo,tipoDoc:st.tipoDoc,sociedad:st.sociedad,
+    idCliente:st.idCliente,nombreCliente:cr?cr[1]:'',empresa:cr?cr[3]:'',
+    notas:st.notas,estado:'Pendiente',documentos:req.map(d=>d.key),
+    ocNumero:da.ocValor, credito:da.creditoValor, moneda:st.docs?.Plantilla?.meta?.moneda||null,
+    ocImporteSinIgv:st.docs?.OC?.meta?.importeSinIgv||'',
+    hesRelacionaOc:st.docs?.HES?.meta?.hesRelacionaOc??null,
+    montoTotal:(st.docs?.Plantilla?.meta?.total>0)?st.docs.Plantilla.meta.total:null,
+    montoSinIgv:(st.docs?.Plantilla?.meta?.subtotal>0)?st.docs.Plantilla.meta.subtotal:null};
+  const backend = await sendToBackend(record);
+  if(!backend.ok){
+    // Antes se mostraba "Solicitud registrada" aunque el servidor hubiera fallado. Ahora se avisa con claridad.
+    btn.disabled=false; btn.textContent='✓ Enviar solicitud';
+    if(errBox){
+      errBox.textContent='La solicitud NO se envió. '+(backend.reason||'')+' Tus archivos siguen cargados: vuelve a presionar "Enviar solicitud" en un minuto.';
+      errBox.classList.add('show');
+    }
+    return;
+  }
+  let aviso='';
+  if(backend.warn){
+    // El servidor envió el correo pero no pudo guardar en su base de datos. Se explica en lenguaje claro
+    // (el texto técnico solo lo ve la administradora, para no mostrar direcciones internas a todos).
+    console.warn('Aviso del servidor:',backend.warn);
+    aviso='Tu solicitud llegó al equipo de facturación por correo, pero no quedó guardada en el sistema de seguimiento, por eso por ahora no aparecerá en "Mis solicitudes". Avisa a la administradora del portal.';
+    if(isAdmin()) aviso+=' Detalle técnico: '+backend.warn;
+  }
+  st.pendingId=null;
+  showTicket(id,aviso);
+}
+
+function showTicket(id,warn=''){
+  document.getElementById('viewNew').innerHTML=`<div class="ticket">
+    <div class="tick-icon">✓</div>
+    <p style="color:var(--muted);font-size:13px;">Solicitud registrada</p>
+    <div class="tick-id">${esc(id)}</div>
+    <p class="tick-sub">Guarda este código. Puedes ver el estado en "Mis solicitudes".</p>
+    ${warn?`<div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:4px;padding:10px;font-size:12.5px;color:var(--amber);margin:14px 0;">${esc(warn)}</div>`:''}
+    <div class="nav-row" style="justify-content:center;gap:12px;margin-top:24px;">
+      <button class="btn" onclick="resetForm()">Nueva solicitud</button>
+      <button class="btn verde" onclick="setTab('hist')">Ver mis solicitudes</button>
+    </div>
+  </div>`;
+}
+function resetForm(){st={step:1,idCliente:'',notas:'',docs:{},tipoDoc:'',sociedad:''};window.__plantillaData=null;currentTab='new';renderNavTabs();renderCurrentTab();}
+
+// ─── HISTORIAL SOLICITANTE ────────────────────────────────────────────────────
+let hFCli='', hDesde='', hHasta='';
+function fmtMonto(n,m='PEN'){ return simboloMoneda(m)+' '+Number(n).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+// Suma por moneda (una factura va en una sola moneda; nunca se mezclan soles con dólares)
+function sumaPorMoneda(arr,k){ const o={}; arr.forEach(r=>{ if(r[k]!=null){ const m=r.moneda||'PEN'; o[m]=(o[m]||0)+r[k]; } }); return o; }
+function fmtSumas(o,sep){ const ks=Object.keys(o).sort(); return ks.length?ks.map(m=>fmtMonto(o[m],m)).join(sep):fmtMonto(0); }
+function fechaCorta(d){ return d?new Date(d).toLocaleString('es-PE',{dateStyle:'short',timeStyle:'short'}):'—'; }
+
+async function renderHist(){
+  const el=document.getElementById('viewHist');if(!el)return;
+  el.innerHTML=`<div class="card"><p style="color:var(--muted);">Cargando…</p></div>`;
+  const {ok,recs,reason} = await fetchSolicitudesFromBackend(true);
+  if(!ok){el.innerHTML=`<div class="card" style="text-align:center;padding:50px;color:var(--muted);">No se pudo cargar tu historial. ${esc(reason||'')}</div>`;return;}
+  if(!recs.length){el.innerHTML=`<div class="card" style="text-align:center;padding:50px;color:var(--muted);">No tienes solicitudes registradas aún.</div>`;return;}
+  window.__histRecs=recs; hFCli=''; hDesde=''; hHasta='';
+  const clientes=[...new Map(recs.map(r=>[r.idCliente,r.nombreCliente])).entries()]
+    .sort((x,y)=>String(x[1]).localeCompare(String(y[1]),'es'));
+  el.innerHTML=`
+  <div class="kpi-grid" id="histKpis"></div>
+  <div class="card">
+    <div class="card-head"><h2>Mis solicitudes</h2><div class="sub" id="histSub"></div></div>
+    <div class="filters hist-filters">
+      <div class="fgrp"><label class="fl" for="hFCli">Cliente</label>
+        <select id="hFCli" onchange="applyHist()">
+          <option value="">Todos los clientes</option>
+          ${clientes.map(([id,nom])=>`<option value="${esc(id)}">${esc(nom)} · ${esc(id)}</option>`).join('')}
+        </select></div>
+      <div class="fgrp"><label class="fl" for="hDesde">Fecha de solicitud: desde</label><input type="date" id="hDesde" onchange="applyHist()"></div>
+      <div class="fgrp"><label class="fl" for="hHasta">hasta</label><input type="date" id="hHasta" onchange="applyHist()"></div>
+      <button class="btn sm" onclick="limpiarHist()">Limpiar filtros</button>
+      <button class="btn sm" onclick="renderHist()" style="margin-left:auto;">↻ Actualizar</button>
+    </div>
+    <div id="histAviso"></div>
+    <div id="histTabla"></div>
+  </div>`;
+  applyHist();
+}
+function limpiarHist(){
+  ['hFCli','hDesde','hHasta'].forEach(id=>{const e=document.getElementById(id); if(e) e.value='';});
+  applyHist();
+}
+function applyHist(){
+  hFCli=document.getElementById('hFCli')?.value||'';
+  hDesde=document.getElementById('hDesde')?.value||'';
+  hHasta=document.getElementById('hHasta')?.value||'';
+  const dia=d=>d?new Date(d).toLocaleDateString('en-CA'):''; // AAAA-MM-DD en hora local
+  let f=window.__histRecs||[];
+  if(hFCli)   f=f.filter(r=>r.idCliente===hFCli);
+  if(hDesde)  f=f.filter(r=>dia(r.fecha)>=hDesde);
+  if(hHasta)  f=f.filter(r=>dia(r.fecha)<=hHasta);
+
+  // "Facturado" = solicitudes en estado Facturado o Enviado
+  const facturadas=f.filter(r=>r.estado==='Facturado'||r.estado==='Enviado');
+  const pendientes=f.filter(r=>r.estado==='Pendiente');
+  const sinMonto=facturadas.filter(r=>r.montoTotal==null).length;
+
+  document.getElementById('histKpis').innerHTML=`
+    <div class="kpi neu"><div class="kpi-label">Solicitudes</div><div class="kpi-val">${f.length}</div>
+      <div class="kpi-sub">${pendientes.length} pendientes · ${facturadas.length} facturadas o enviadas</div></div>
+    <div class="kpi fact"><div class="kpi-label">Monto facturado (Facturado + Enviado)</div><div class="kpi-val">${fmtSumas(sumaPorMoneda(facturadas,'montoTotal'),'<br>')}</div>
+      <div class="kpi-sub">con IGV · sin IGV: ${fmtSumas(sumaPorMoneda(facturadas,'montoSinIgv'),' + ')}</div></div>
+    <div class="kpi pend"><div class="kpi-label">Pendiente de facturar</div><div class="kpi-val">${fmtSumas(sumaPorMoneda(pendientes,'montoTotal'),'<br>')}</div>
+      <div class="kpi-sub">con IGV · sin IGV: ${fmtSumas(sumaPorMoneda(pendientes,'montoSinIgv'),' + ')}</div></div>`;
+  document.getElementById('histSub').textContent=`${f.length} de ${(window.__histRecs||[]).length} solicitudes`;
+  document.getElementById('histAviso').innerHTML = sinMonto
+    ? `<div class="info-bar">⚠ ${sinMonto} solicitud${sinMonto>1?'es':''} facturada${sinMonto>1?'s':''} no tiene${sinMonto>1?'n':''} monto registrado (se enviaron antes de esta actualización o su cliente no usa plantilla), por eso no suma${sinMonto>1?'n':''} en el total.</div>` : '';
+
+  document.getElementById('histTabla').innerHTML=`<div class="tbl-wrap"><table class="adm-table hist-table">
+    <thead><tr><th>Código</th><th>Solicitado</th><th>Cliente</th><th>Tipo</th><th>Sociedad</th><th>Empresa</th><th>Docs</th><th style="text-align:right;">Monto</th><th>Estado</th><th>Facturado el</th><th>Enviado el</th></tr></thead>
+    <tbody>${f.length===0?`<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--muted);">Ninguna solicitud coincide con los filtros.</td></tr>`:f.map(r=>`<tr>
+      <td class="nw" style="font-family:var(--mono);font-size:10.5px;">${esc(r.id)}</td>
+      <td class="nw">${fechaCorta(r.fecha)}</td>
+      <td>${esc(r.nombreCliente)}<br><span style="color:var(--muted);font-family:var(--mono);font-size:10px;">${esc(r.idCliente)}</span></td>
+      <td><span class="pill" style="background:var(--verde-cl);color:var(--negro);">${esc(r.tipoDoc||'—')}</span></td>
+      <td>${esc(r.sociedad||'—')}</td>
+      <td>${esc(r.empresa)}</td>
+      <td class="nw" title="Los adjuntos se enviaron por correo al equipo de facturación" style="color:var(--muted);">${(r.documentos||[]).length} docs</td>
+      <td class="nw" style="text-align:right;">${r.montoTotal!=null?`<b>${fmtMonto(r.montoTotal,r.moneda)}</b>${r.montoSinIgv!=null?`<br><span style="color:var(--muted);font-size:10.5px;">sin IGV ${fmtMonto(r.montoSinIgv,r.moneda)}</span>`:''}`:'<span style="color:var(--muted);">—</span>'}</td>
+      <td><span class="pill ${r.estado==='Pendiente'?'pill-pend':r.estado==='Facturado'?'pill-proc':'pill-fact'}">${esc(r.estado)}</span></td>
+      <td class="nw">${r.estado==='Pendiente'?'—':fechaCorta(r.fechaFacturado)}</td>
+      <td class="nw">${r.estado==='Enviado'?fechaCorta(r.fechaEnvio):'—'}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+// ─── ADMIN PANEL ─────────────────────────────────────────────────────────────
+async function renderAdmin(){
+  const el=document.getElementById('viewAdmin');if(!el)return;
+  el.innerHTML=`<div class="card"><p style="color:var(--muted);">Cargando todas las solicitudes…</p></div>`;
+  const {ok,recs,reason} = await fetchSolicitudesFromBackend(false);
+  if(!ok){el.innerHTML=`<div class="card" style="text-align:center;padding:50px;color:var(--muted);">No se pudo cargar el panel. ${esc(reason||'')}</div>`;return;}
+  window.__adminRecs=recs;
+  renderAdminTable(recs,'','','');
+}
+
+function exportarExcel(){
+  const fS=document.getElementById('aFS')?.value||'';
+  const fE=document.getElementById('aFE')?.value||'';
+  const fEmp=document.getElementById('aFEmp')?.value||'';
+  let f=window.__adminRecs||[];
+  if(fS) f=f.filter(r=>r.solicitante===fS);
+  if(fE) f=f.filter(r=>r.estado===fE);
+  if(fEmp) f=f.filter(r=>r.empresa===fEmp);
+
+  const filas = f.map(r=>{
+    const h = horasEntre(r.fecha, r.fechaRespuesta);
+    return {
+      'Código': r.id,
+      'Solicitado el': r.fecha ? new Date(r.fecha).toLocaleString('es-PE') : '',
+      'Solicitante': r.solicitante,
+      'Tipo de documento': r.tipoDoc || '',
+      'Sociedad': r.sociedad || '',
+      'Cliente': r.nombreCliente,
+      'ID Cliente': r.idCliente,
+      'Empresa': r.empresa,
+      'N° Documentos': (r.documentos||[]).length,
+      'Estado': r.estado,
+      'Actualizado el': r.fechaRespuesta ? new Date(r.fechaRespuesta).toLocaleString('es-PE') : '',
+      'Horas de respuesta': h!==null ? Number(h.toFixed(1)) : '',
+      'Dentro de 24h': h!==null ? (h<=24?'Sí':'No') : '',
+      'Notas': r.notas || '',
+      'N° OC': r.ocNumero || '',
+      'Crédito': r.credito || '',
+      'MAT': r.mat || '',
+      'Moneda': r.montoTotal!=null ? (r.moneda||'PEN') : '',
+      'Monto total (con IGV)': r.montoTotal!=null ? r.montoTotal : '',
+      'Monto sin IGV': r.montoSinIgv!=null ? r.montoSinIgv : ''
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet(filas);
+  ws['!cols'] = [{wch:14},{wch:18},{wch:22},{wch:16},{wch:12},{wch:28},{wch:12},{wch:16},{wch:10},{wch:12},{wch:18},{wch:12},{wch:10},{wch:30},{wch:16},{wch:10},{wch:16},{wch:8},{wch:20},{wch:16}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Solicitudes');
+  const fecha = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `reporte_facturacion_${fecha}.xlsx`);
+}
+
+function horasEntre(a,b){
+  if(!a||!b) return null;
+  return (new Date(b).getTime()-new Date(a).getTime())/3600000;
+}
+
+function renderAdminTable(recs,fS,fE,fEmp){
+  let f=recs;
+  if(fS) f=f.filter(r=>r.solicitante===fS);
+  if(fE) f=f.filter(r=>r.estado===fE);
+  if(fEmp) f=f.filter(r=>r.empresa===fEmp);
+  const solics=[...new Set(recs.map(r=>r.solicitante))].sort();
+  const emps=[...new Set(recs.map(r=>r.empresa).filter(Boolean))].sort();
+  const pend=recs.filter(r=>r.estado==='Pendiente').length;
+  const proc=recs.filter(r=>r.estado==='Facturado').length;
+  const fact=recs.filter(r=>r.estado==='Enviado').length;
+  document.getElementById('viewAdmin').innerHTML=`
+  <div class="kpi-grid">
+    <div class="kpi pend"><div class="kpi-label">Pendientes</div><div class="kpi-val">${pend}</div></div>
+    <div class="kpi proc"><div class="kpi-label">Facturados</div><div class="kpi-val">${proc}</div></div>
+    <div class="kpi fact"><div class="kpi-label">Enviados</div><div class="kpi-val">${fact}</div></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Panel de Facturación</h2><div class="sub">Vista exclusiva — ${f.length} de ${recs.length} solicitudes</div></div>
+    <div class="filters">
+      <select id="aFS" onchange="applyAdmin()">
+        <option value="">Todos los solicitantes</option>
+        ${solics.map(s=>`<option value="${esc(s)}" ${s===fS?'selected':''}>${esc(s)}</option>`).join('')}
+      </select>
+      <select id="aFE" onchange="applyAdmin()">
+        <option value="">Todos los estados</option>
+        <option value="Pendiente" ${fE==='Pendiente'?'selected':''}>Pendiente</option>
+        <option value="Facturado" ${fE==='Facturado'?'selected':''}>Facturado</option>
+        <option value="Enviado" ${fE==='Enviado'?'selected':''}>Enviado</option>
+      </select>
+      <select id="aFEmp" onchange="applyAdmin()">
+        <option value="">Todas las empresas</option>
+        ${emps.map(e=>`<option value="${esc(e)}" ${e===fEmp?'selected':''}>${esc(e)}</option>`).join('')}
+      </select>
+      <button class="btn sm" onclick="renderAdmin()">↻ Actualizar</button>
+      <button class="btn sm" onclick="exportarExcel()" style="margin-left:auto;">⬇ Exportar a Excel</button>
+    </div>
+    <div class="tbl-wrap"><table class="adm-table">
+      <thead><tr><th>Código</th><th>Solicitado</th><th>Solicitante</th><th>Tipo</th><th>Sociedad</th><th>Cliente</th><th>Empresa</th><th>Docs</th><th>Estado</th><th>Actualizado el</th><th>Horas</th></tr></thead>
+      <tbody>${f.length===0?`<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--muted);">Sin resultados.</td></tr>`:
+      f.map(r=>{
+        const h = horasEntre(r.fecha, r.fechaRespuesta);
+        return `<tr>
+        <td style="font-family:var(--mono);font-size:10.5px;">${esc(r.id)}</td>
+        <td style="white-space:nowrap;font-size:11.5px;">${r.fecha?new Date(r.fecha).toLocaleString('es-PE',{dateStyle:'short',timeStyle:'short'}):''}</td>
+        <td>${esc(r.solicitante)}</td>
+        <td><span class="pill" style="background:var(--verde-cl);color:var(--negro);">${esc(r.tipoDoc||'—')}</span></td>
+        <td style="font-size:12px;">${esc(r.sociedad||'—')}</td>
+        <td>${esc(r.nombreCliente)}<br><span style="color:var(--muted);font-family:var(--mono);font-size:10px;">${esc(r.idCliente)}</span></td>
+        <td>${esc(r.empresa)}</td>
+        <td style="font-size:11px;color:var(--muted);">${(r.documentos||[]).length} docs</td>
+        <td>
+          <select class="ss" data-id="${esc(r.id)}" onchange="adminUpdateEstado(this.dataset.id,this.value,this)">
+            <option value="Pendiente" ${r.estado==='Pendiente'?'selected':''}>Pendiente</option>
+            <option value="Facturado" ${r.estado==='Facturado'?'selected':''}>Facturado</option>
+            <option value="Enviado" ${r.estado==='Enviado'?'selected':''}>Enviado</option>
+          </select>
+        </td>
+        <td style="white-space:nowrap;font-size:11.5px;">${r.fechaRespuesta?new Date(r.fechaRespuesta).toLocaleString('es-PE',{dateStyle:'short',timeStyle:'short'}):'—'}</td>
+        <td style="font-size:11.5px;${h!==null&&h>24?'color:var(--danger,#a3273a);font-weight:600;':''}">${h!==null?h.toFixed(1):'—'}</td>
+      </tr>`;}).join('')}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+
+function applyAdmin(){
+  renderAdminTable(window.__adminRecs||[],
+    document.getElementById('aFS')?.value||'',
+    document.getElementById('aFE')?.value||'',
+    document.getElementById('aFEmp')?.value||'');
+}
+
+async function adminUpdateEstado(id,val,selEl){
+  const rec=window.__adminRecs?.find(x=>x.id===id);
+  const prev=rec?{estado:rec.estado,fechaFacturado:rec.fechaFacturado,fechaEnvio:rec.fechaEnvio}:null;
+  const now=new Date().toISOString();
+  if(selEl) selEl.disabled=true;
+  if(rec){
+    rec.estado=val;
+    if(val==='Facturado') rec.fechaFacturado=now;
+    if(val==='Enviado') rec.fechaEnvio=now;
+  }
+  let guardado=false, motivo='';
+  try{
+    const r=await apiFetch(`${BACKEND_BASE}/solicitudes/${encodeURIComponent(id)}/estado`,{
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({estado:val,fecha:now})
+    });
+    guardado=r.ok;
+    if(!r.ok){ let m=''; try{ const jj=await r.json(); m=(jj&&jj.error)?String(jj.error):''; }catch(_e){} motivo=m||('El servidor respondió con error '+r.status+'.'); }
+  }catch(e){ motivo='No se pudo contactar al servidor.'; }
+  if(!guardado){
+    // Si no se guardó, se vuelve al estado anterior para no mostrar algo falso.
+    if(rec&&prev){rec.estado=prev.estado;rec.fechaFacturado=prev.fechaFacturado;rec.fechaEnvio=prev.fechaEnvio;}
+    if(selEl&&prev) selEl.value=prev.estado;
+    if(selEl) selEl.disabled=false;
+    alert('No se pudo guardar el cambio de estado de '+id+'. '+motivo+' Se mantuvo el estado anterior'+(prev?' ('+prev.estado+')':'')+'.');
+    return;
+  }
+  applyAdmin(); // vuelve a dibujar la tabla y actualiza los contadores
+}
+
+// ─── MONITOREO ─────────────────────────────────────────────────────────────
+const MON_COLORS={red:'#B3443A',amber:'#D98E3F',green:'#3E7C2B',negro:'#232323',verde:'#C5EC4C',verdeDk:'#8FB520',gris:'#E5E8DD',muted:'#5C6B3A'};
+const SLA_HORAS=24;
+let mFEmp='',mFMes='',mFSol='';
+
+async function renderMonitor(){
+  const el=document.getElementById('viewMonitor');if(!el)return;
+  el.innerHTML=`<div class="card"><p style="color:var(--muted);">Cargando datos de monitoreo…</p></div>`;
+  const {ok,recs,reason}=await fetchSolicitudesFromBackend(false);
+  if(!ok){el.innerHTML=`<div class="card" style="text-align:center;padding:50px;color:var(--muted);">No se pudo cargar el panel de monitoreo. ${esc(reason||'')}</div>`;return;}
+  window.__monitorRecs=recs;
+  mFEmp='';mFMes='';mFSol='';
+  renderMonitorDashboard(recs);
+}
+
+function monthKey(d){const dt=new Date(d);return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');}
+function monthLabel(key){
+  const [y,m]=key.split('-');
+  const names=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  return `${names[+m-1]} ${y}`;
+}
+
+function computeLegStats(recs,dateField){
+  const withResp=recs.filter(r=>r.fecha&&r[dateField]);
+  const horasArr=withResp.map(r=>({r,h:horasEntre(r.fecha,r[dateField])})).filter(x=>x.h!==null&&x.h>=0);
+  const respondidos=horasArr.length;
+  const avgHoras=respondidos?horasArr.reduce((a,x)=>a+x.h,0)/respondidos:null;
+  const dentroSLA=horasArr.filter(x=>x.h<=SLA_HORAS).length;
+  const pctSLA=respondidos?Math.round(dentroSLA/respondidos*100):0;
+  const bySol={};
+  horasArr.forEach(x=>{(bySol[x.r.solicitante]=bySol[x.r.solicitante]||[]).push(x.h);});
+  const ranking=Object.entries(bySol).map(([nombre,arr])=>({
+    nombre,avgHoras:arr.reduce((a,b)=>a+b,0)/arr.length,count:arr.length
+  })).sort((a,b)=>b.avgHoras-a.avgHoras);
+  return {respondidos,avgHoras,pctSLA,dentroSLA,fueraSLA:respondidos-dentroSLA,ranking};
+}
+
+function computeMonitorStats(recs){
+  const total=recs.length;
+  const pendientes=recs.filter(r=>r.estado==='Pendiente').length;
+  const facturados=recs.filter(r=>r.estado==='Facturado').length;
+  const enviados=recs.filter(r=>r.estado==='Enviado').length;
+
+  const legFacturado=computeLegStats(recs,'fechaFacturado');
+  const legEnvio=computeLegStats(recs,'fechaEnvio');
+
+  const bucketsRecep=[0,0,0,0],bucketsEnvio=[0,0,0,0];
+  recs.forEach(r=>{if(r.fecha){const h=new Date(r.fecha).getHours();bucketsRecep[Math.min(3,Math.floor(h/6))]++;}});
+  recs.filter(r=>r.fechaEnvio).forEach(r=>{const h=new Date(r.fechaEnvio).getHours();bucketsEnvio[Math.min(3,Math.floor(h/6))]++;});
+  const totRecep=bucketsRecep.reduce((a,b)=>a+b,0)||1;
+  const totEnvio=bucketsEnvio.reduce((a,b)=>a+b,0)||1;
+  const pctRecep=bucketsRecep.map(v=>Math.round(v/totRecep*100));
+  const pctEnvio=bucketsEnvio.map(v=>Math.round(v/totEnvio*100));
+
+  const conFecha=recs.filter(r=>r.fecha);
+  const conEnvio=recs.filter(r=>r.fechaEnvio);
+  const avgHourRecep=conFecha.length?conFecha.reduce((a,r)=>a+new Date(r.fecha).getHours(),0)/conFecha.length:null;
+  const avgHourEnvio=conEnvio.length?conEnvio.reduce((a,r)=>a+new Date(r.fechaEnvio).getHours(),0)/conEnvio.length:null;
+
+  return {total,pendientes,facturados,enviados,legFacturado,legEnvio,pctRecep,pctEnvio,avgHourRecep,avgHourEnvio};
+}
+
+function fmtHora(h){
+  if(h===null||h===undefined) return '—';
+  const hh=Math.floor(h),mm=Math.round((h-hh)*60);
+  return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+}
+
+function gaugeSVG(pct){
+  pct=Math.max(0,Math.min(100,Math.round(pct)));
+  const cx=110,cy=112,r=88,sw=20;
+  const toXY=(a)=>({x:cx-r*Math.cos(a*Math.PI/180),y:cy-r*Math.sin(a*Math.PI/180)});
+  const zone=(a1,a2,color)=>{const p1=toXY(a1),p2=toXY(a2);
+    return `<path d="M ${p1.x.toFixed(1)},${p1.y.toFixed(1)} A ${r},${r} 0 0,1 ${p2.x.toFixed(1)},${p2.y.toFixed(1)}" fill="none" stroke="${color}" stroke-width="${sw}"/>`;};
+  const needleA=pct/100*180;
+  const tip=toXY(needleA);
+  const color=pct>=80?MON_COLORS.green:pct>=50?MON_COLORS.amber:MON_COLORS.red;
+  return `<svg viewBox="0 0 220 130" style="width:100%;max-width:128px;">
+    ${zone(0,90,MON_COLORS.red)}${zone(90,144,MON_COLORS.amber)}${zone(144,180,MON_COLORS.green)}
+    <line x1="${cx}" y1="${cy}" x2="${tip.x.toFixed(1)}" y2="${tip.y.toFixed(1)}" stroke="${MON_COLORS.negro}" stroke-width="3.5" stroke-linecap="round"/>
+    <circle cx="${cx}" cy="${cy}" r="7" fill="${MON_COLORS.negro}"/>
+  </svg>
+  <div style="text-align:center;margin-top:-6px;">
+    <div style="font-size:19px;font-weight:700;color:${color};">${pct}%</div>
+  </div>`;
+}
+
+function donutSVG(pct,color){
+  pct=Math.max(0,Math.min(100,Math.round(pct)));
+  const r=68,cx=90,cy=90,circ=2*Math.PI*r;
+  const dash=circ*pct/100;
+  return `<svg viewBox="0 0 180 180" style="width:100%;max-width:110px;">
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${MON_COLORS.gris}" stroke-width="20"/>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="20"
+      stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round"
+      transform="rotate(-90 ${cx} ${cy})"/>
+    <text x="${cx}" y="${cy+9}" text-anchor="middle" font-size="30" font-weight="700" fill="${MON_COLORS.negro}">${pct}%</text>
+  </svg>`;
+}
+
+function hourBarsHtml(pctRecep,pctFact){
+  const labels=['00–06h','06–12h','12–18h','18–24h'];
+  const cols=labels.map((lbl,i)=>{
+    const hRecep=Math.max(3,pctRecep[i]*1.15),hFact=Math.max(3,pctFact[i]*1.15);
+    return `<div class="hb-group">
+      <div class="hb-cols">
+        <div class="hb-col" style="height:${hRecep}px;background:${MON_COLORS.verdeDk};">${pctRecep[i]>0?`<span class="hb-val" style="color:${MON_COLORS.verdeDk};">${pctRecep[i]}%</span>`:''}</div>
+        <div class="hb-col" style="height:${hFact}px;background:${MON_COLORS.negro};">${pctFact[i]>0?`<span class="hb-val" style="color:${MON_COLORS.negro};">${pctFact[i]}%</span>`:''}</div>
+      </div>
+      <div class="hb-lbl">${lbl}</div>
+    </div>`;
+  }).join('');
+  return `<div class="hourbars">${cols}</div>`;
+}
+
+function gaugeCardHtml(title,sub,leg){
+  return `<div class="card mon-card mon-gaugecard">
+    <div class="mon-gauge-title">${title}</div>
+    <div class="mon-gauge-sub">${sub}</div>
+    ${gaugeSVG(leg.pctSLA)}
+  </div>`;
+}
+function donutCardHtml(title,sub,leg){
+  const donutColor=leg.avgHoras===null?MON_COLORS.muted:(leg.avgHoras<=SLA_HORAS?MON_COLORS.green:MON_COLORS.red);
+  const donutPct=leg.avgHoras===null?0:Math.min(100,Math.round(leg.avgHoras/SLA_HORAS*100));
+  return `<div class="card mon-card mon-gaugecard">
+    <div class="mon-gauge-title">${title}</div>
+    <div class="mon-gauge-sub">${sub}</div>
+    ${donutSVG(donutPct,donutColor)}
+    <div class="mon-gauge-avg">Prom: <b style="color:${donutColor};">${leg.avgHoras!==null?leg.avgHoras.toFixed(1)+'h':'—'}</b> · ${leg.respondidos} sol.</div>
+  </div>`;
+}
+
+function renderMonitorDashboard(recs){
+  let f=recs;
+  if(mFEmp) f=f.filter(r=>r.empresa===mFEmp);
+  if(mFSol) f=f.filter(r=>r.solicitante===mFSol);
+  if(mFMes) f=f.filter(r=>r.fecha&&monthKey(r.fecha)===mFMes);
+
+  const s=computeMonitorStats(f);
+  const emps=[...new Set(recs.map(r=>r.empresa).filter(Boolean))].sort();
+  const sols=[...new Set(recs.map(r=>r.solicitante).filter(Boolean))].sort();
+  const meses=[...new Set(recs.filter(r=>r.fecha).map(r=>monthKey(r.fecha)))].sort();
+
+  const maxRankHoras=Math.max(SLA_HORAS,...s.legEnvio.ranking.map(r=>r.avgHoras),1);
+  const rankingHtml=s.legEnvio.ranking.length?s.legEnvio.ranking.map(r=>{
+    const w=Math.min(100,r.avgHoras/maxRankHoras*100);
+    const color=r.avgHoras<=SLA_HORAS?MON_COLORS.green:(r.avgHoras<=SLA_HORAS*1.5?MON_COLORS.amber:MON_COLORS.red);
+    return `<div class="rank-row">
+      <div class="rank-name" title="${esc(r.nombre)}">${esc(r.nombre)}</div>
+      <div class="rank-track"><div class="rank-fill" style="width:${w}%;background:${color};"></div></div>
+      <div class="rank-val" style="color:${color};">${r.avgHoras.toFixed(1)} h</div>
+    </div>`;
+  }).join(''):`<p style="color:var(--muted);font-size:12.5px;padding:10px 0;">Sin solicitudes enviadas en este filtro.</p>`;
+
+  document.getElementById('viewMonitor').innerHTML=`
+  <div class="card mon-card">
+    <div class="mon-head-row">
+      <div class="card-head"><h2>Panel de Monitoreo</h2><div class="sub">Tiempos de respuesta de facturación — ${f.length} de ${recs.length} solicitudes</div></div>
+      <div class="filters">
+        <select id="mFEmp" onchange="applyMonitor()">
+          <option value="">Todas las empresas</option>
+          ${emps.map(e=>`<option value="${esc(e)}" ${e===mFEmp?'selected':''}>${esc(e)}</option>`).join('')}
+        </select>
+        <select id="mFSol" onchange="applyMonitor()">
+          <option value="">Todos los solicitantes</option>
+          ${sols.map(sn=>`<option value="${esc(sn)}" ${sn===mFSol?'selected':''}>${esc(sn)}</option>`).join('')}
+        </select>
+        <select id="mFMes" onchange="applyMonitor()">
+          <option value="">Todos los meses</option>
+          ${meses.map(m=>`<option value="${esc(m)}" ${m===mFMes?'selected':''}>${esc(monthLabel(m))}</option>`).join('')}
+        </select>
+        <button class="btn sm" onclick="renderMonitor()">↻</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="mon-topgrid">
+    <div class="mon-kpi"><div class="val">${f.length}</div><div class="lbl">Solicitudes</div></div>
+    <div class="mon-kpi"><div class="val" style="color:var(--amber);">${s.pendientes}</div><div class="lbl">Pendientes</div></div>
+    <div class="mon-kpi"><div class="val" style="color:#2A4D8F;">${s.facturados}</div><div class="lbl">Facturados</div></div>
+    <div class="mon-kpi"><div class="val" style="color:var(--green-ok);">${s.enviados}</div><div class="lbl">Enviados</div></div>
+  </div>
+
+  <div class="mon-grid4">
+    ${gaugeCardHtml('Recep. → Facturado', `% dentro de ${SLA_HORAS}h`, s.legFacturado)}
+    ${donutCardHtml('Prom. Facturado', `vs. meta ${SLA_HORAS}h`, s.legFacturado)}
+    ${gaugeCardHtml('Recep. → Enviado', `% dentro de ${SLA_HORAS}h`, s.legEnvio)}
+    ${donutCardHtml('Prom. Enviado', `vs. meta ${SLA_HORAS}h`, s.legEnvio)}
+  </div>
+  <div class="mon-legend" style="margin-bottom:10px;">
+    <span><span class="dot" style="background:${MON_COLORS.red};"></span>&lt;50%</span>
+    <span><span class="dot" style="background:${MON_COLORS.amber};"></span>50–80%</span>
+    <span><span class="dot" style="background:${MON_COLORS.green};"></span>&gt;80%</span>
+  </div>
+
+  <div class="mon-bottom-row">
+    <div class="card mon-card">
+      <div class="card-head" style="margin-bottom:8px;"><h2 style="font-size:14px;">Hora de recepción vs. envío</h2><div class="sub" style="font-size:11px;">Distribución (%) por franja horaria</div></div>
+      ${hourBarsHtml(s.pctRecep,s.pctEnvio)}
+      <div class="mon-legend">
+        <span><span class="dot" style="background:${MON_COLORS.verdeDk};"></span>Recepción</span>
+        <span><span class="dot" style="background:${MON_COLORS.negro};"></span>Enviado</span>
+      </div>
+      <div class="mon-avgpills">
+        <div class="mon-avgpill">Prom. recepción: <b>${fmtHora(s.avgHourRecep)}</b></div>
+        <div class="mon-avgpill">Prom. envío: <b>${fmtHora(s.avgHourEnvio)}</b></div>
+      </div>
+    </div>
+
+    <div class="card mon-card">
+      <div class="card-head" style="margin-bottom:8px;"><h2 style="font-size:14px;">Tiempo promedio por solicitante</h2><div class="sub" style="font-size:11px;">Recepción → Enviado</div></div>
+      <div class="rank-list">${rankingHtml}</div>
+    </div>
+  </div>`;
+}
+
+function applyMonitor(){
+  mFEmp=document.getElementById('mFEmp')?.value||'';
+  mFSol=document.getElementById('mFSol')?.value||'';
+  mFMes=document.getElementById('mFMes')?.value||'';
+  renderMonitorDashboard(window.__monitorRecs||[]);
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+iniciar();
+</script>
+</body>
+</html>
